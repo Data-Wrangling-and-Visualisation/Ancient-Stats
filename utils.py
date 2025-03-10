@@ -2,7 +2,7 @@ from requests import get
 from os import listdir
 from json import load, dump
 
-players = [listdir('data/users')]
+players = {i[:-5] for i in listdir('data/users')}
 
 
 class Player:
