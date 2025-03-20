@@ -1,11 +1,12 @@
-from requests import get
-from os import listdir
-from json import load, dump
+import logging
+
 from pydantic import BaseModel
+from requests import get
+
 from .match import MatchModel
 
-# TODO: remove it
-players = {i[:-5] for i in listdir("../data/users")}
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 
 class PlayerModel(BaseModel):
@@ -16,38 +17,35 @@ class PlayerModel(BaseModel):
     rank: int
     matches: list[MatchModel]
 
+    class Config:
+        populate_by_name = True
+
 
 class Player:
-    def __init__(self, id, path: str = "../data"):
+    def __init__(self, id, db):
         self.id: str = id
-        self.path: str = path
+        self.db = db
 
-        if id not in players:
-            self.update()
+        self.player_data = None
 
-            if self.id is None:
-                print("player id is invalid")
+    async def load(self) -> None:
+        player_data = await self.db.players.find_one({"id_": int(self.id)})
+        if not player_data:
+            logger.error(f"Player with id {self.id} not found.")
+            await self.update()
+            player_data = await self.db.players.find_one({"id_": int(self.id)})
+            if not player_data:
+                logger.error(f"Player with id {self.id} still not found after update.")
                 self.player_data = None
                 return
 
-        with open(f"{self.path}/users/{id}.json") as f:
-            data = load(f)
+        self.player_data = PlayerModel(**player_data)
+        logger.info(f"Loaded player data: {self.player_data}")
 
-        print(data["matches"])
+    def get_matches(self, start=0, end=20) -> list[MatchModel] | list:
+        return self.player_data.matches[start:end] if self.player_data else []
 
-        self.player_data = PlayerModel(
-            id_=self.id,
-            name=data["name"],
-            avatar=data["avatar"],
-            steam=data["steam"],
-            rank=data["rank"],
-            matches=[MatchModel(**i) for i in data["matches"]],
-        )
-
-    def get_matches(self, start=0, end=20):
-        return self.player_data.matches[start:end]
-
-    def update(self):
+    async def update(self) -> None:
         player_data = get(f"https://api.opendota.com/api/players/{self.id}")
 
         if player_data.status_code != 200:
@@ -62,7 +60,7 @@ class Player:
         match_data = match_data.json()
         player_data = player_data.json()
 
-        self.player_data = PlayerModel(
+        player_model = PlayerModel(
             id_=self.id,
             name=player_data["profile"]["personaname"],
             avatar=player_data["profile"]["avatarfull"],
@@ -86,13 +84,8 @@ class Player:
             ],
         )
 
-        player_dict = self.player_data.model_dump()
-        with open(f"{self.path}/users/{self.id}.json", "w") as f:
-            dump(
-                {
-                    key: player_dict[key]
-                    for key in ["name", "avatar", "steam", "rank", "matches"]
-                },
-                f,
-                indent=4,
-            )
+        await self.db.players.update_one(
+            {"id_": int(self.id)}, {"$set": player_model.model_dump()}, upsert=True
+        )
+
+        self.player_data = player_model.model_copy()
