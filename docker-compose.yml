@@ -1,0 +1,42 @@
+services:
+  api:
+    build:
+      context: ./api
+    container_name: fastapi-server
+    ports:
+      - 8080:8080
+    restart: "on-failure"
+    command: bash -c "uvicorn main:app --host 0.0.0.0 --port 8080"
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+    depends_on:
+      - mongo
+    environment:
+      - MONGO_URL=mongodb://mongo:27017
+      - MONGO_DB=db
+    networks:
+      - mongo
+    # temporary solution untill full mongodb usage instead of .json files
+    volumes:
+      - ./data:/data
+
+  mongo:
+    image: mongo:latest
+    container_name: mongodb-container
+    restart: "on-failure"
+    ports:
+      - 27017:27017
+    networks:
+      - mongo
+    volumes:
+      - mongo-data:/data/mongo
+
+volumes:
+  mongo-data:
+
+networks:
+  mongo:
+    driver: bridge

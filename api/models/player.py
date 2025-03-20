@@ -4,7 +4,8 @@ from json import load, dump
 from pydantic import BaseModel
 from .match import MatchModel
 
-players = {i[:-5] for i in listdir("data/users")}
+# TODO: remove it
+players = {i[:-5] for i in listdir("../data/users")}
 
 
 class PlayerModel(BaseModel):
@@ -17,7 +18,7 @@ class PlayerModel(BaseModel):
 
 
 class Player:
-    def __init__(self, id, path: str = "data"):
+    def __init__(self, id, path: str = "../data"):
         self.id: str = id
         self.path: str = path
 

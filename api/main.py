@@ -1,13 +1,10 @@
-import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
 
-import aiohttp
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, status
-from motor.motor_asyncio import AsyncIOMotorClient
-from .models import Player, PlayerModel, MatchModel
+from models import Player, PlayerModel, MatchModel
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -38,7 +35,7 @@ async def lifespan(app: FastAPI):
             logger.error(f"An error occurred during shutdown: {e}")
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan, title="AncientStats")
 
 # mongo_client = AsyncIOMotorClient(MONGO_URL)
 # db = mongo_client[MONGO_DB]
