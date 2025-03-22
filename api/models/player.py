@@ -1,10 +1,12 @@
-from requests import get
-from os import listdir
-from json import load, dump
+import logging
+
 from pydantic import BaseModel
+from requests import get
+
 from .match import MatchModel
 
-players = {i[:-5] for i in listdir("data/users")}
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 
 class PlayerModel(BaseModel):
@@ -15,53 +17,58 @@ class PlayerModel(BaseModel):
     rank: int
     matches: list[MatchModel]
 
+    class Config:
+        populate_by_name = True
+
 
 class Player:
-    def __init__(self, id, path: str = "data"):
-        self.id: str = id
-        self.path: str = path
+    def __init__(self, id: int, db):
+        self.id = id
+        self.db = db
 
-        if id not in players:
-            self.update()
+        self.player_data = None
 
-            if self.id is None:
-                print("player id is invalid")
-                self.player_data = None
-                return
-
-        with open(f"{self.path}/users/{id}.json") as f:
-            data = load(f)
-
-        print(data["matches"])
-
-        self.player_data = PlayerModel(
-            id_=self.id,
-            name=data["name"],
-            avatar=data["avatar"],
-            steam=data["steam"],
-            rank=data["rank"],
-            matches=[MatchModel(**i) for i in data["matches"]],
-        )
-
-    def get_matches(self, start=0, end=20):
-        return self.player_data.matches[start:end]
-
-    def update(self):
-        player_data = get(f"https://api.opendota.com/api/players/{self.id}")
-
-        if player_data.status_code != 200:
+        if type(self.id) is not int:
             self.id = None
-            return None
+
+    async def load(self) -> None:
+        """
+        Loads data about player from DB, if not found, tries to update with API requests
+        """
+        if self.id is None:
+            return {"status": False, "details": "invalid id type"}
+
+        player_data = await self.db.players.find_one({"id_": self.id})
+        if not player_data:
+            logger.info(f"Player with id {self.id} not found in the database")
+
+            res = await self.update()
+            if not res["status"]:
+                logger.info(f"Loading data of {self.id} was failed: {res['details']}")
+                return {"status": False, "details": "loading data was failed"}
+
+        self.player_data = PlayerModel(**player_data)
+        logger.info(f"Loaded player data of user: {self.id}")
+
+        return {"status": True, "details": ""}
+
+    def get_matches(self, start=0, end=20) -> list[MatchModel] | list:
+        end_ = min(end, len(self.player_data.matches) - 1)
+        return self.player_data.matches[start:end_] if self.player_data else []
+
+    async def update(self) -> None:
+        player_data = get(f"https://api.opendota.com/api/players/{self.id}")
+        if player_data.status_code != 200:
+            return {"status": False, "details": "user_id request was failed"}
 
         match_data = get(f"https://api.opendota.com/api/players/{self.id}/matches")
-
         if match_data.status_code != 200:
-            return None
+            return {"status": False, "details": "match_data request was failed"}
 
         match_data = match_data.json()
         player_data = player_data.json()
 
-        self.player_data = PlayerModel(
+        player_model = PlayerModel(
             id_=self.id,
             name=player_data["profile"]["personaname"],
             avatar=player_data["profile"]["avatarfull"],
@@ -85,13 +92,12 @@ class Player:
             ],
         )
 
-        player_dict = self.player_data.model_dump()
-        with open(f"{self.path}/users/{self.id}.json", "w") as f:
-            dump(
-                {
-                    key: player_dict[key]
-                    for key in ["name", "avatar", "steam", "rank", "matches"]
-                },
-                f,
-                indent=4,
-            )
+        await self.db.players.update_one(
+            {"id_": int(self.id)}, {"$set": player_model.model_dump()}, upsert=True
+        )
+
+        self.player_data = player_model.model_copy()
+
+        logger.info(f"Updated player data of user: {self.id}")
+
+        return {"status": True, "details": "User data was updated"}
