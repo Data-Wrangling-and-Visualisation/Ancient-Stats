@@ -22,40 +22,48 @@ class PlayerModel(BaseModel):
 
 
 class Player:
-    def __init__(self, id, db):
-        self.id: str = id
+    def __init__(self, id: int, db):
+        self.id = id
         self.db = db
 
         self.player_data = None
 
+        if type(self.id) is not int:
+            self.id = None
+
     async def load(self) -> None:
-        player_data = await self.db.players.find_one({"id_": int(self.id)})
+        """
+        Loads data about player from DB, if not found, tries to update with API requests
+        """
+        if self.id is None:
+            return {"status": False, "details": "invalid id type"}
+
+        player_data = await self.db.players.find_one({"id_": self.id})
         if not player_data:
-            logger.error(f"Player with id {self.id} not found.")
-            await self.update()
-            player_data = await self.db.players.find_one({"id_": int(self.id)})
-            if not player_data:
-                logger.error(f"Player with id {self.id} still not found after update.")
-                self.player_data = None
-                return
+            logger.info(f"Player with id {self.id} not found in the database")
+
+            res = await self.update()
+            if not res["status"]:
+                logger.info(f"Loading data of {self.id} was failed: {res['details']}")
+                return {"status": False, "details": "loading data was failed"}
 
         self.player_data = PlayerModel(**player_data)
-        logger.info(f"Loaded player data: {self.player_data}")
+        logger.info(f"Loaded player data of user: {self.id}")
+
+        return {"status": True, "details": ""}
 
     def get_matches(self, start=0, end=20) -> list[MatchModel] | list:
-        return self.player_data.matches[start:end] if self.player_data else []
+        end_ = min(end, len(self.player_data.matches) - 1)
+        return self.player_data.matches[start:end_] if self.player_data else []
 
     async def update(self) -> None:
         player_data = get(f"https://api.opendota.com/api/players/{self.id}")
-
         if player_data.status_code != 200:
-            self.id = None
-            return None
+            return {"status": False, "details": "user_id request was failed"}
 
         match_data = get(f"https://api.opendota.com/api/players/{self.id}/matches")
-
         if match_data.status_code != 200:
-            return None
+            return {"status": False, "details": "match_data request was failed"}
 
         match_data = match_data.json()
         player_data = player_data.json()
@@ -89,3 +97,7 @@ class Player:
         )
 
         self.player_data = player_model.model_copy()
+
+        logger.info(f"Updated player data of user: {self.id}")
+
+        return {"status": True, "details": "User data was updated"}
