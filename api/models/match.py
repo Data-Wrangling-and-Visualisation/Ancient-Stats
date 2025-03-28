@@ -1,6 +1,4 @@
-from datetime import datetime
-from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -67,7 +65,7 @@ class PlayerMatchStats(BaseModel):
     hero_healing: int
     gold: int
     gold_spent: int
-    ability_upgrades_arr: List[int]
+    ability_upgrades_arr: List[int] = Field(default_factory=list)
     is_subscriber: bool
     radiant_win: bool
     start_time: int
@@ -93,67 +91,3 @@ class DetailedMatchData(BaseModel):
     match_id: int
     rating_id: Optional[int] = None
     players: List[PlayerMatchStats]
-    created_at: datetime = Field(default_factory=datetime.now(datetime.timezone.utc))
-    updated_at: datetime = Field(default_factory=datetime.now(datetime.timezone.utc))
-
-    class Config:
-        json_encoders = {datetime: lambda v: v.timestamp()}
-
-from motor.motor_asyncio import AsyncIOMotorClient
-from models import MatchData
-from typing import List, Optional
-from fastapi import HTTPException
-import logging
-
-logger = logging.getLogger(__name__)
-
-class MatchManager:
-    def __init__(self, db):
-        self.db = db
-        self.collection = db.matches
-
-    async def create_match(self, match_data: MatchData):
-        try:
-            result = await self.collection.insert_one(match_data.dict())
-            return result.inserted_id
-        except Exception as e:
-            logger.error(f"Error creating match: {e}")
-            raise HTTPException(status_code=500, detail="Failed to create match")
-
-    async def get_match(self, match_id: int) -> Optional[MatchData]:
-        try:
-            match = await self.collection.find_one({"match_id": match_id})
-            if match:
-                return MatchData(**match)
-            return None
-        except Exception as e:
-            logger.error(f"Error getting match {match_id}: {e}")
-            raise HTTPException(status_code=500, detail="Failed to get match")
-
-    async def get_matches_by_rating(self, rating_id: int) -> List[MatchData]:
-        try:
-            matches = await self.collection.find({"rating_id": rating_id}).to_list(None)
-            return [MatchData(**match) for match in matches]
-        except Exception as e:
-            logger.error(f"Error getting matches for rating {rating_id}: {e}")
-            raise HTTPException(status_code=500, detail="Failed to get matches")
-
-    async def update_match(self, match_id: int, update_data: dict):
-        try:
-            update_data["updated_at"] = datetime.utcnow()
-            result = await self.collection.update_one(
-                {"match_id": match_id},
-                {"$set": update_data}
-            )
-            return result.modified_count > 0
-        except Exception as e:
-            logger.error(f"Error updating match {match_id}: {e}")
-            raise HTTPException(status_code=500, detail="Failed to update match")
-
-    async def delete_match(self, match_id: int):
-        try:
-            result = await self.collection.delete_one({"match_id": match_id})
-            return result.deleted_count > 0
-        except Exception as e:
-            logger.error(f"Error deleting match {match_id}: {e}")
-            raise HTTPException(status_code=500, detail="Failed to delete match")
