@@ -15,7 +15,15 @@ from fastapi import (
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from models import MatchModel, Player, PlayerModel, StatusModel
+from models import (
+    MatchModel,
+    Player,
+    PlayerModel,
+    StatusModel,
+    HeroModel,
+    HeroCollection,
+    HeroManager,
+)
 from motor.motor_asyncio import AsyncIOMotorClient
 
 logging.basicConfig(level=logging.INFO)
@@ -30,14 +38,21 @@ MONGO_DB = os.getenv("MONGO_DB", "db")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
+
+        logger.info("Connecting to MongoDB.")
         app.mongo_client = AsyncIOMotorClient(MONGO_URL)
         app.db = app.mongo_client[MONGO_DB]
 
         await app.db.sessions.create_index(
             [("created_at", 1)], expireAfterSeconds=86400
         )
-
         logger.info("Connected to MongoDB.")
+
+        logger.info("Initializing Hero Table")
+        app.hero_manager = HeroManager(app.db)
+        await app.hero_manager.initialize()
+        logger.info("Finishing initialization of Hero Table")
+
         yield
     except Exception as e:
         logger.error(f"An error occurred during startup: {e}")
@@ -210,3 +225,13 @@ async def get_player_matches(
 
     start, end = min(start, end), max(start, end)
     return player.get_matches(start=start, end=end)
+
+
+@app.get("/heroes", response_model=HeroCollection)
+async def get_all_heroes():
+    return await app.hero_manager.get_all_heroes()
+
+
+@app.get("/heroes/{hero_id}", response_model=HeroModel)
+async def get_hero(hero_id: int):
+    return await app.hero_manager.get_hero(hero_id)
