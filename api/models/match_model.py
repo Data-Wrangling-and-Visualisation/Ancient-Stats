@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class MatchModel(BaseModel):
@@ -75,16 +75,25 @@ class PlayerMatchStats(BaseModel):
     game_mode: int
     is_contributor: bool
     patch: int
-    region: int
+    region: Optional[int] = None
     isRadiant: bool
     win: int
     lose: int
     total_gold: int
-    total_xp: int
-    kills_per_min: float
+    total_xp: Optional[int] = None
+    kills_per_min: Optional[float] = None
     kda: float
     abandons: int
     benchmarks: PlayerBenchmarks
+
+    @field_validator("total_xp", "kills_per_min", "region", mode="after")
+    def handle_null_regen(cls, v):
+        if v is None:
+            return 0.0
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return 0.0
 
 
 class DetailedMatchData(BaseModel):

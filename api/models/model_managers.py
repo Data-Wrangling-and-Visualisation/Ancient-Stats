@@ -50,7 +50,7 @@ class MatchManager:
 
     async def get_match(self, match_id: int) -> DetailedMatchData:
         if cached := await self.db.matches.find_one(
-            {"match_id": match_id}, projection={"_id": False}
+                {"match_id": match_id}, projection={"_id": False}
         ):
             logger.debug(f"Cache hit for match {match_id}")
             return DetailedMatchData(**cached)
@@ -68,6 +68,14 @@ class MatchManager:
             return DetailedMatchData(**cached)
 
         return match_data
+
+    def save_match(self, match_id, json):
+        try:
+            self.db.matches.update_one(
+                {'match_id': match_id}, {"$set": DetailedMatchData(**json).model_dump()}, upsert=True
+            )
+        except DuplicateKeyError:
+            pass
 
 
 class HeroManager:
