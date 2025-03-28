@@ -23,6 +23,8 @@ from models import (
     HeroModel,
     HeroCollection,
     HeroManager,
+    MatchManager,
+    DetailedMatchData,
 )
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -85,6 +87,10 @@ app.add_middleware(
 
 async def get_db():
     return app.db
+
+
+async def get_match_manager(db=Depends(get_db)) -> MatchManager:
+    return MatchManager(db)
 
 
 async def get_current_user_id(session_id: str = Cookie(None)) -> str:
@@ -235,3 +241,9 @@ async def get_all_heroes():
 @app.get("/heroes/{hero_id}", response_model=HeroModel)
 async def get_hero(hero_id: int):
     return await app.hero_manager.get_hero(hero_id)
+
+
+# Trying to explore the httpx since it's nativy async
+@app.get("/matches/{match_id}", response_model=DetailedMatchData)
+async def get_match(match_id: int, manager: MatchManager = Depends()):
+    return await manager.get_match(match_id)
