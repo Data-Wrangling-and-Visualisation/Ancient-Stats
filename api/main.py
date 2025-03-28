@@ -17,7 +17,7 @@ from fastapi import (
 from fastapi.middleware.cors import CORSMiddleware
 from models import (
     MatchModel,
-    Player,
+    PlayerManager,
     PlayerModel,
     StatusModel,
     HeroModel,
@@ -151,7 +151,7 @@ async def get_current_player(
 ) -> PlayerModel:
     logger.info(f"Fetching data for current user {player_id}")
 
-    player = Player(id=player_id, db=db)
+    player = PlayerManager(id=player_id, db=db)
     res = await player.load()
 
     if not res["status"]:
@@ -169,7 +169,7 @@ async def get_current_user_matches(
     player_id: int = Depends(get_current_user_id),
     db=Depends(get_db),
 ) -> list[MatchModel] | list:
-    player = Player(id=player_id, db=db)
+    player = PlayerManager(id=player_id, db=db)
     res = await player.load()
 
     if not res["status"]:
@@ -200,7 +200,7 @@ async def get_player(
 ) -> PlayerModel:
     logger.info(f"Fetching data for player {player_id}.")
 
-    player = Player(id=player_id, db=db)
+    player = PlayerManager(id=player_id, db=db)
     res = await player.load()
 
     if not res["status"]:
@@ -220,7 +220,7 @@ async def get_player_matches(
     end: int = 20,
     db=Depends(get_db),
 ) -> list[MatchModel] | list:
-    player = Player(id=player_id, db=db)
+    player = PlayerManager(id=player_id, db=db)
     res = await player.load()
 
     if not res["status"]:
