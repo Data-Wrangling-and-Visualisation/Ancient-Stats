@@ -7,7 +7,19 @@ from pymongo.errors import DuplicateKeyError
 import logging
 from requests import get
 import httpx
+import requests
 from tenacity import retry, stop_after_attempt, wait_exponential
+
+from api.utils.errors import (
+    Result,
+    Err,
+    Ok,
+    error_handler,
+    ErrPlayerIdNotFound,
+    ErrDataLoadingFailed,
+    ErrInternal,
+    ErrHttpxRequest,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,48 +46,50 @@ class MatchManager:
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True,
     )
-    async def fetch_match_data(self, match_id: int) -> DetailedMatchData:
+    async def _fetch_match_data(self, match_id: int) -> DetailedMatchData:
         try:
             response = await self.client.get(f"/matches/{match_id}")
             response.raise_for_status()
-            return DetailedMatchData(**response.json())
+            return Ok(DetailedMatchData(**response.json()))
         except httpx.HTTPStatusError as e:
-            logger.error(f"API error for match {match_id}: {e}")
-            raise HTTPException(
-                status_code=e.response.status_code, detail="Failed to fetch match data"
-            )
+            return ErrHttpxRequest(f"API request failed: {e}")
         except Exception as e:
-            logger.error(f"Unexpected error fetching match {match_id}: {e}")
-            raise HTTPException(status_code=500, detail="Internal server error")
+            return ErrInternal(f"Unexpected error fetching match {match_id}: {e}")
 
+    @error_handler
     async def get_match(self, match_id: int) -> DetailedMatchData:
-        if cached := await self.db.matches.find_one(
-                {"match_id": match_id}, projection={"_id": False}
-        ):
-            logger.debug(f"Cache hit for match {match_id}")
-            return DetailedMatchData(**cached)
+        cached = await self.db.matches.find_one(
+            {"match_id": match_id}, projection={"_id": False}
+        )
+        if cached:
+            return Ok(DetailedMatchData(**cached))
 
-        match_data = await self.fetch_match_data(match_id)
+        res = await self._fetch_match_data(match_id)
+        if not isinstance(res, Ok):
+            return res
 
+        match_data, _ = res
         try:
             await self.db.matches.update_one(
                 {"match_id": match_id}, {"$set": match_data.model_dump()}, upsert=True
             )
         except DuplicateKeyError:
-            cached = await self.db.matches.find_one(
-                {"match_id": match_id}, projection={"_id": False}
-            )
-            return DetailedMatchData(**cached)
+            pass
+        return Ok(match_data)
 
-        return match_data
-
+    @error_handler
     def save_match(self, match_id, json):
         try:
             self.db.matches.update_one(
-                {'match_id': match_id}, {"$set": DetailedMatchData(**json).model_dump()}, upsert=True
+                {"match_id": match_id},
+                {"$set": DetailedMatchData(**json).model_dump()},
+                upsert=True,
             )
-        except DuplicateKeyError:
-            pass
+            return Ok(None)
+        except DuplicateKeyError:  # TODO
+            logger.error(f"DuplicateKeyError at {self.save_match.__name__}")
+
+        return Err()
 
 
 class HeroManager:
@@ -89,6 +103,7 @@ class HeroManager:
             cls._instance.initialized = False
         return cls._instance
 
+    @error_handler
     async def initialize(self):
         if self.initialized:
             return self.initialized
@@ -97,8 +112,9 @@ class HeroManager:
             await self._load_hero_data()
         self.initialized = True
 
-        return self.initialized
+        return Ok(self.initialized)
 
+    @error_handler
     async def _load_hero_data(self):
         try:
             response = requests.get(self.API_URL)
@@ -119,19 +135,28 @@ class HeroManager:
 
             if heroes:
                 await self.db.heroes.insert_many(heroes)
+            return Ok(None)
         except Exception as e:
             print(f"Error loading hero data: {e}")
-            raise
+            return ErrInternal(str(e))
 
+    @error_handler
     async def get_all_heroes(self) -> HeroCollection:
-        heroes = await self.db.heroes.find().to_list(length=None)
-        return HeroCollection(heroes=heroes)
+        try:
+            heroes = await self.db.heroes.find().to_list(length=None)
+            return Ok(HeroCollection(heroes=heroes))
+        except Exception as e:
+            return ErrInternal(f"Error getting heroes: {e}")
 
+    @error_handler
     async def get_hero(self, hero_id: int) -> HeroModel:
-        hero = await self.db.heroes.find_one({"id": hero_id})
-        if not hero:
-            raise HTTPException(status_code=404, detail="Hero not found")
-        return HeroModel(**hero)
+        try:
+            hero = await self.db.heroes.find_one({"id": hero_id})
+            if not hero:
+                return Err(f"Hero {hero_id} not found")
+            return Ok(HeroModel(**hero))
+        except Exception as e:
+            return Err(f"Error getting hero {hero_id}: {e}")
 
 
 class PlayerManager:
@@ -144,39 +169,59 @@ class PlayerManager:
         if type(self.id) is not int:
             self.id = None
 
-    async def load(self) -> None:
+    @error_handler
+    async def load(self) -> Result:
         """
         Loads data about player from DB, if not found, tries to update with API requests
         """
         if self.id is None:
-            return {"status": False, "details": "invalid id type"}
+            return ErrPlayerIdNotFound()
 
         player_data = await self.db.players.find_one({"id_": self.id})
         if not player_data:
             logger.info(f"Player with id {self.id} not found in the database")
 
             res = await self.update()
-            if not res["status"]:
-                logger.info(f"Loading data of {self.id} was failed: {res['details']}")
-                return {"status": False, "details": "loading data was failed"}
+
+            if isinstance(res, ErrDataLoadingFailed):
+                return res
+            if isinstance(res, ErrPlayerIdNotFound):
+                return res
+
+            if not isinstance(res, Ok):
+                return res
 
         self.player_data = PlayerModel(**player_data)
         logger.info(f"Loaded player data of user: {self.id}")
 
-        return {"status": True, "details": ""}
+        return Ok(None)
 
-    def get_matches(self, start=0, end=20) -> list[MatchModel] | list:
+    @error_handler
+    def get_matches(self, start=0, end=20) -> Result:
+        if not self.player_data:
+            return ErrDataLoadingFailed("Player data not loaded: get_matches")
+
+        start_ = max(start, 0)
+
+        if end != -1:
+            start_, end = min(start_, end), max(start_, end)
+
         end_ = min(end, len(self.player_data.matches) - 1)
-        return self.player_data.matches[start:end_] if self.player_data else []
 
-    async def update(self) -> None:
+        res = self.player_data.matches[start_:end_] if self.player_data else []
+        return Ok(res)
+
+    @error_handler
+    async def update(self) -> Result:
         player_data = get(f"https://api.opendota.com/api/players/{self.id}")
         if player_data.status_code != 200:
-            return {"status": False, "details": "user_id request was failed"}
+            return ErrPlayerIdNotFound()
 
         match_data = get(f"https://api.opendota.com/api/players/{self.id}/matches")
         if match_data.status_code != 200:
-            return {"status": False, "details": "match_data request was failed"}
+            return ErrDataLoadingFailed(
+                f"Failed to get mathc_data: {self.update.__name__=} "
+            )
 
         match_data = match_data.json()
         player_data = player_data.json()
@@ -213,4 +258,4 @@ class PlayerManager:
 
         logger.info(f"Updated player data of user: {self.id}")
 
-        return {"status": True, "details": "User data was updated"}
+        return Ok(None)

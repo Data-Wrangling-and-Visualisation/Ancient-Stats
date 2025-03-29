@@ -172,3 +172,4 @@ cython_debug/
 
 # Ignore folder
 data/ignore_folder
+*.DS_Store

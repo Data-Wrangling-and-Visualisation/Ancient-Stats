@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=42"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "api"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "aiohttp==3.11.13",
+    "fastapi==0.110.3",
+    "gunicorn==23.0.0",
+    "httpx==0.28.1",
+    "motor==3.5.1",
+    "pydantic==2.10.6",
+    "pymongo==4.8.0",
+    "python-dotenv==1.0.1",
+    "redis==5.0.7",
+    "requests==2.32.3",
+    "slowapi==0.1.9",
+    "tenacity==9.0.0",
+    "uvicorn==0.23.2",
+]
+

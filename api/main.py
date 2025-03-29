@@ -15,7 +15,7 @@ from fastapi import (
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from models import (
+from api.models import (
     MatchModel,
     PlayerManager,
     PlayerModel,
@@ -25,6 +25,17 @@ from models import (
     HeroManager,
     MatchManager,
     DetailedMatchData,
+)
+
+from api.utils import (
+    Result,
+    Err,
+    Ok,
+    error_handler,
+    ErrDataLoadingFailed,
+    ErrHttpxRequest,
+    ErrInternal,
+    ErrPlayerIdNotFound,
 )
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -52,7 +63,9 @@ async def lifespan(app: FastAPI):
 
         logger.info("Initializing Hero Table")
         app.hero_manager = HeroManager(app.db)
-        await app.hero_manager.initialize()
+        _, err = await app.hero_manager.initialize()
+        if err:
+            logger.info(f"Initialization of Hero Table ended with {err}")
         logger.info("Finishing initialization of Hero Table")
 
         yield
@@ -93,6 +106,7 @@ async def get_match_manager(db=Depends(get_db)) -> MatchManager:
     return MatchManager(db)
 
 
+# TODO: add DB error handling
 async def get_current_user_id(session_id: str = Cookie(None)) -> str:
     if not session_id:
         raise HTTPException(
@@ -108,19 +122,26 @@ async def get_current_user_id(session_id: str = Cookie(None)) -> str:
     return session["user_id"]
 
 
+# TODO: add DB error handling
 @app.post("/set-user-id")
 async def set_user_id(response: Response, player_id: int, db=Depends(get_db)):
-    player = Player(id=player_id, db=db)
-    await player.load()
+    player = PlayerManager(id=player_id, db=db)
+    res = await player.load()
 
-    if not player.id:
+    if isinstance(res, ErrPlayerIdNotFound):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
 
-    if not player.player_data:
+    if isinstance(res, ErrDataLoadingFailed):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User match data not found"
+        )
+
+    if not isinstance(res, Ok):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Something is wrong",
         )
 
     session_id = str(uuid.uuid4())
@@ -152,9 +173,9 @@ async def get_current_player(
     logger.info(f"Fetching data for current user {player_id}")
 
     player = PlayerManager(id=player_id, db=db)
-    res = await player.load()
+    _, err = await player.load()
 
-    if not res["status"]:
+    if err:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
@@ -170,16 +191,30 @@ async def get_current_user_matches(
     db=Depends(get_db),
 ) -> list[MatchModel] | list:
     player = PlayerManager(id=player_id, db=db)
-    res = await player.load()
+    _, err = await player.load()
 
-    if not res["status"]:
+    if err:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Player {player_id} not found or invalid.",
         )
 
     start, end = min(start, end), max(start, end)
-    return player.get_matches(start=start, end=end)
+
+    res = player.get_matches(start=start, end=end)
+    if isinstance(res, ErrDataLoadingFailed):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User match data not found"
+        )
+
+    if not isinstance(res, Ok):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Something is wrong",
+        )
+
+    data, _ = res
+    return data
 
 
 # temporarily (or not) updating logic moved to separete endpoint, since
@@ -187,9 +222,15 @@ async def get_current_user_matches(
 # logic 1-2 request were made, with 1 request extra witout control - now at max 1 if user_id is new
 @app.get("/update_player/{player_id}", response_model=StatusModel)
 async def update_player_data(player_id: int, db=Depends(get_db)):
-    player = Player(id=player_id, db=db)
-    res = await player.update()
-    return StatusModel(**res)
+    player = PlayerManager(id=player_id, db=db)
+    _, err = await player.update()
+
+    if err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Player {player_id} not found or does not have match data.",
+        )
+    return StatusModel(**{"status": True})
 
 
 @app.get("/players/{player_id}", response_model=PlayerModel)
@@ -201,9 +242,9 @@ async def get_player(
     logger.info(f"Fetching data for player {player_id}.")
 
     player = PlayerManager(id=player_id, db=db)
-    res = await player.load()
+    _, err = await player.load()
 
-    if not res["status"]:
+    if err:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Player {player_id} not found or invalid.",
@@ -221,29 +262,65 @@ async def get_player_matches(
     db=Depends(get_db),
 ) -> list[MatchModel] | list:
     player = PlayerManager(id=player_id, db=db)
-    res = await player.load()
+    _, err = await player.load()
 
-    if not res["status"]:
+    if err:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Player {player_id} not found.",
         )
 
-    start, end = min(start, end), max(start, end)
-    return player.get_matches(start=start, end=end)
+    res = player.get_matches(start=start, end=end)
+    if isinstance(res, ErrDataLoadingFailed):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User match data not found"
+        )
+
+    if not isinstance(res, Ok):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Something is wrong",
+        )
+
+    data, err = res
+    return data
 
 
 @app.get("/heroes", response_model=HeroCollection)
 async def get_all_heroes():
-    return await app.hero_manager.get_all_heroes()
+    res = await app.hero_manager.get_all_heroes()
+    if isinstance(res, ErrDataLoadingFailed):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User match data not found"
+        )
+
+    if not isinstance(res, Ok):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Something is wrong",
+        )
+    data, _ = res
+    return data
 
 
 @app.get("/heroes/{hero_id}", response_model=HeroModel)
 async def get_hero(hero_id: int):
-    return await app.hero_manager.get_hero(hero_id)
+    data, err = await app.hero_manager.get_hero(hero_id)
+    if err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Something is wrong",
+        )
+    return data
 
 
 # Trying to explore the httpx since it's nativy async
 @app.get("/matches/{match_id}", response_model=DetailedMatchData)
 async def get_match(match_id: int, manager: MatchManager = Depends()):
-    return await manager.get_match(match_id)
+    data, err = await manager.get_match(match_id)
+    if err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Something is wrong",
+        )
+    return data
