@@ -65,7 +65,7 @@ class MatchManager:
             return Ok(DetailedMatchData(**cached))
 
         res = await self._fetch_match_data(match_id)
-        if not isinstance(Ok):  # TODO: Check this part
+        if not isinstance(res, Ok):
             return res
 
         match_data, _ = res
@@ -73,7 +73,7 @@ class MatchManager:
             await self.db.matches.update_one(
                 {"match_id": match_id}, {"$set": match_data.model_dump()}, upsert=True
             )
-        except DuplicateKeyError:  # TODO
+        except DuplicateKeyError:
             pass
         return Ok(match_data)
 

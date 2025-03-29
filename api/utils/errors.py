@@ -47,7 +47,7 @@ def error_handler(
             result = func(*args, **kwargs)
         except:
             # general error if the error was thrown by 3d-side function/library
-            print(f"General exception by {func.__name__=} in error_handeler")
+            print(f"General exception by {func.__name__=} in error_handler")
             return Err()
         return result
 
@@ -75,7 +75,7 @@ class ErrDataLoadingFailed(Err):
         self.value = None
         self.is_error = True
 
-        logger.error(f"Erorr logs: {msg}")
+        logger.error(f"Error logs: {msg}")
 
     def __iter__(self):
         yield None
@@ -89,7 +89,7 @@ class ErrHttpxRequest(Err):
         self.value = None
         self.is_error = True
 
-        logger.error(f"Erorr logs: {msg}")
+        logger.error(f"Error logs: {msg}")
 
     def __iter__(self):
         yield None
@@ -103,7 +103,7 @@ class ErrInternal(Err):
         self.value = None
         self.is_error = True
 
-        logger.error(f"Erorr logs: {msg}")
+        logger.error(f"Error logs: {msg}")
 
     def __iter__(self):
         yield None
