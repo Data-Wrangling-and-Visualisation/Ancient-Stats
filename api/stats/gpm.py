@@ -1,4 +1,4 @@
-class Gpm:
+class GPM:
     def __init__(self, db):
         self.db = db
     async def init(self):
@@ -17,7 +17,6 @@ class Gpm:
                 gpm[hero_id][rating][1] += 1
         for hero_id in gpm:
             gpm[hero_id]['upd'] = True
-        await self.db['stats'].drop()
         await self.db['stats'].insert_one({'gpm': {'real': gpm}})
 
     async def update(self, match):
@@ -42,7 +41,7 @@ class Gpm:
                 upsert=True
             )
 
-    async def get_gpm(self, rating):
+    async def get(self, rating):
         winrate = (await self.db['stats'].find_one({'gpm': {'$exists': True}}))['gpm']['real']
         for hero_id in winrate:
             upd = winrate[hero_id].get('upd', False)

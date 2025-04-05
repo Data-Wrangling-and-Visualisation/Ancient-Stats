@@ -1,4 +1,4 @@
-class Xpm:
+class XPM:
     def __init__(self, db):
         self.db = db
     async def init(self):
@@ -17,7 +17,6 @@ class Xpm:
                 xpm[hero_id][rating][1] += 1
         for hero_id in xpm:
             xpm[hero_id]['upd'] = True
-        await self.db['stats'].drop()
         await self.db['stats'].insert_one({'xpm': {'real': xpm}})
 
     async def update(self, match):
@@ -42,7 +41,7 @@ class Xpm:
                 upsert=True
             )
 
-    async def get_xpm(self, rating):
+    async def get(self, rating):
         winrate = (await self.db['stats'].find_one({'xpm': {'$exists': True}}))['xpm']['real']
         for hero_id in winrate:
             upd = winrate[hero_id].get('upd', False)
