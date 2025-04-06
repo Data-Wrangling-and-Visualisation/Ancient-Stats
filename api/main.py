@@ -27,16 +27,18 @@ from api.models import (
     DetailedMatchData,
 )
 
-from api.utils import (
+from api.utils.errors import (
     Result,
     Err,
     Ok,
-    error_handler,
     ErrDataLoadingFailed,
     ErrHttpxRequest,
     ErrInternal,
     ErrPlayerIdNotFound,
 )
+from api.stats import GPM, XPM
+from api.stats.winrate import Raw, XP
+
 from motor.motor_asyncio import AsyncIOMotorClient
 
 logging.basicConfig(level=logging.INFO)
@@ -47,11 +49,49 @@ load_dotenv()
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
 MONGO_DB = os.getenv("MONGO_DB", "db")
 
+rating_values = [
+    "11",
+    "12",
+    "13",
+    "14",
+    "15",
+    "21",
+    "22",
+    "23",
+    "24",
+    "25",
+    "31",
+    "32",
+    "33",
+    "34",
+    "35",
+    "41",
+    "42",
+    "43",
+    "44",
+    "45",
+    "51",
+    "52",
+    "53",
+    "54",
+    "55",
+    "61",
+    "62",
+    "63",
+    "64",
+    "65",
+    "71",
+    "72",
+    "73",
+    "74",
+    "75",
+    "81",
+]
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
-
         logger.info("Connecting to MongoDB.")
         app.mongo_client = AsyncIOMotorClient(MONGO_URL)
         app.db = app.mongo_client[MONGO_DB]
@@ -324,3 +364,68 @@ async def get_match(match_id: int, manager: MatchManager = Depends()):
             detail="Something is wrong",
         )
     return data
+
+
+@app.get("/stats/gmp")
+async def get_gpm(rating_id: str, db=Depends(get_db)):
+    if rating_id not in rating_values:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Something is wrong",
+        )
+
+    gpm = GPM(db=db)
+    await gpm.init()
+
+    # TODO: add model
+    res = await gpm.get(rating=rating_id)
+
+    return res
+
+
+@app.get("/stats/xpm")
+async def get_xpm(rating_id: str, db=Depends(get_db)):
+    if rating_id not in rating_values:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Something is wrong",
+        )
+
+    xpm = XPM(db=db)
+    await xpm.init()
+
+    # TODO: add model
+    res = await xpm.get(rating=rating_id)
+
+    return res
+
+
+@app.get("/stats/winrate/")
+async def get_winrate_xpm(rating_id: str, types: str, db=Depends(get_db)):
+    if str(rating_id) not in rating_values:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Bad rating_id {type(rating_id)}, {rating_id}",
+        )
+
+    if types not in ["against", "raw", "with", "xp"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Wrong types value",
+        )
+
+    if types == "against":
+        stats_class = ...  # Against(db=db)
+    if types == "raw":
+        stats_class = Raw(db=db)
+    if types == "with":
+        stats_class = ...  # With(db=db)
+    if types == "xp":
+        stats_class = XP(db=db)
+
+    await stats_class.init()
+
+    # TODO: add model
+    res = await stats_class.get(rating=rating_id)
+
+    return res
