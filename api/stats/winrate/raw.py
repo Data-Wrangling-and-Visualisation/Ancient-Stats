@@ -3,7 +3,6 @@ class Raw:
         self.db = db
 
     async def init(self):
-        print('zxc')
         if await self.db['stats'].find_one({"winrate.raw": {'$exists': True}}):
             return
         winrate = {}
@@ -36,8 +35,13 @@ class Raw:
                 upsert=True
             )
 
-    async def get(self, rating):
+    async def get(self, rating, hero_id=None):
+        def proc(winrate):
+            if type(winrate) == list:
+                return winrate[1] / sum(winrate)
+            return {i: proc(j) for i, j in winrate.items()}
+
         rating = str(rating)
         winrate = (await self.db['stats'].find_one({'winrate.raw': {'$exists': True}}))['winrate']['raw'][rating]
-        winrate = {i: j[1] / sum(j) for i, j in winrate.items()}
-        return winrate
+        if hero_id: winrate = winrate[str(hero_id)]
+        return proc(winrate)

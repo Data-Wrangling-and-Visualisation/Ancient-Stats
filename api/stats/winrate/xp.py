@@ -41,9 +41,13 @@ class XP:
                 upsert=True
             )
 
-    async def get(self, rating, hero_id):
+    async def get(self, rating, hero_id=None):
+        def proc(winrate):
+            if type(winrate) == list:
+                return winrate[1] / sum(winrate)
+            return {i: proc(j) for i, j in winrate.items()}
+
         rating = str(rating)
-        hero_id = str(hero_id)
-        winrate = (await self.db['stats'].find_one({'winrate.xp': {'$exists': True}}))['winrate']['xp'][rating][hero_id]
-        winrate = {i: j[1] / sum(j) for i, j in winrate.items()}
-        return winrate
+        winrate = (await self.db['stats'].find_one({'winrate.xp': {'$exists': True}}))['winrate']['xp'][rating]
+        if hero_id: winrate = winrate[str(hero_id)]
+        return proc(winrate)
