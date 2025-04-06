@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 import datetime
 import logging
 import os
@@ -15,18 +18,30 @@ from fastapi import (
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from models import (
+from motor.motor_asyncio import AsyncIOMotorClient
+
+from api.models import (
+    DetailedMatchData,
+    HeroCollection,
+    HeroManager,
+    HeroModel,
+    MatchManager,
     MatchModel,
     PlayerManager,
     PlayerModel,
     StatusModel,
-    HeroModel,
-    HeroCollection,
-    HeroManager,
-    MatchManager,
-    DetailedMatchData,
 )
-from motor.motor_asyncio import AsyncIOMotorClient
+from api.stats import GPM, XPM
+from api.stats.winrate import XP, Against, Item, Raw, With
+from api.utils.errors import (
+    Err,
+    ErrDataLoadingFailed,
+    ErrHttpxRequest,
+    ErrInternal,
+    ErrPlayerIdNotFound,
+    Ok,
+    Result,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -36,11 +51,49 @@ load_dotenv()
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
 MONGO_DB = os.getenv("MONGO_DB", "db")
 
+rating_values = [
+    "11",
+    "12",
+    "13",
+    "14",
+    "15",
+    "21",
+    "22",
+    "23",
+    "24",
+    "25",
+    "31",
+    "32",
+    "33",
+    "34",
+    "35",
+    "41",
+    "42",
+    "43",
+    "44",
+    "45",
+    "51",
+    "52",
+    "53",
+    "54",
+    "55",
+    "61",
+    "62",
+    "63",
+    "64",
+    "65",
+    "71",
+    "72",
+    "73",
+    "74",
+    "75",
+    "81",
+]
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
-
         logger.info("Connecting to MongoDB.")
         app.mongo_client = AsyncIOMotorClient(MONGO_URL)
         app.db = app.mongo_client[MONGO_DB]
@@ -52,8 +105,21 @@ async def lifespan(app: FastAPI):
 
         logger.info("Initializing Hero Table")
         app.hero_manager = HeroManager(app.db)
-        await app.hero_manager.initialize()
+        _, err = await app.hero_manager.initialize()
+        if err:
+            logger.info(f"Initialization of Hero Table ended with {err}")
         logger.info("Finishing initialization of Hero Table")
+
+        app.stats_cls = {
+            "against": Against(db=app.db),
+            "raw": Raw(db=app.db),
+            "with": With(db=app.db),
+            "xp": XP(db=app.db),
+            "item": Item(db=app.db),
+            "xpm": XPM(db=app.db),
+            "gpm": GPM(db=app.db),
+        }
+        [await cls.init() for cls in app.stats_cls.values()]
 
         yield
     except Exception as e:
@@ -93,6 +159,19 @@ async def get_match_manager(db=Depends(get_db)) -> MatchManager:
     return MatchManager(db)
 
 
+async def get_stats_classes() -> (
+    dict[str, XPM | GPM | Raw | XP | Against | With | Item]
+):
+    return app.stats_cls
+
+
+async def update_stats(
+    match_data: MatchModel, stats_classes=Depends(get_stats_classes)
+):
+    [await stats_classes[key].update(match_data) for key in stats_classes.keys()]
+
+
+# TODO: add DB error handling
 async def get_current_user_id(session_id: str = Cookie(None)) -> str:
     if not session_id:
         raise HTTPException(
@@ -108,19 +187,28 @@ async def get_current_user_id(session_id: str = Cookie(None)) -> str:
     return session["user_id"]
 
 
+# TODO: add DB error handling
 @app.post("/set-user-id")
-async def set_user_id(response: Response, player_id: int, db=Depends(get_db)):
-    player = Player(id=player_id, db=db)
-    await player.load()
+async def set_user_id(
+    response: Response, player_id: int, db=Depends(get_db)
+) -> dict[str, str]:
+    player = PlayerManager(id=player_id, db=db)
+    res = await player.load()
 
-    if not player.id:
+    if isinstance(res, ErrPlayerIdNotFound):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
 
-    if not player.player_data:
+    if isinstance(res, ErrDataLoadingFailed):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User match data not found"
+        )
+
+    if not isinstance(res, Ok):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Something is wrong",
         )
 
     session_id = str(uuid.uuid4())
@@ -152,9 +240,9 @@ async def get_current_player(
     logger.info(f"Fetching data for current user {player_id}")
 
     player = PlayerManager(id=player_id, db=db)
-    res = await player.load()
+    _, err = await player.load()
 
-    if not res["status"]:
+    if err:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
@@ -170,16 +258,30 @@ async def get_current_user_matches(
     db=Depends(get_db),
 ) -> list[MatchModel] | list:
     player = PlayerManager(id=player_id, db=db)
-    res = await player.load()
+    _, err = await player.load()
 
-    if not res["status"]:
+    if err:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Player {player_id} not found or invalid.",
         )
 
     start, end = min(start, end), max(start, end)
-    return player.get_matches(start=start, end=end)
+
+    res = player.get_matches(start=start, end=end)
+    if isinstance(res, ErrDataLoadingFailed):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User match data not found"
+        )
+
+    if not isinstance(res, Ok):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Something is wrong",
+        )
+
+    data, _ = res
+    return data
 
 
 # temporarily (or not) updating logic moved to separete endpoint, since
@@ -187,29 +289,32 @@ async def get_current_user_matches(
 # logic 1-2 request were made, with 1 request extra witout control - now at max 1 if user_id is new
 @app.get("/update_player/{player_id}", response_model=StatusModel)
 async def update_player_data(player_id: int, db=Depends(get_db)):
-    player = Player(id=player_id, db=db)
-    res = await player.update()
-    return StatusModel(**res)
+    player = PlayerManager(id=player_id, db=db)
+    _, err = await player.update()
+
+    if err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Player {player_id} not found or does not have match data.",
+        )
+    return StatusModel(**{"status": True})
 
 
 @app.get("/players/{player_id}", response_model=PlayerModel)
 async def get_player(
     player_id: int,
-    # background_tasks: BackgroundTasks,
     db=Depends(get_db),
 ) -> PlayerModel:
     logger.info(f"Fetching data for player {player_id}.")
 
     player = PlayerManager(id=player_id, db=db)
-    res = await player.load()
+    _, err = await player.load()
 
-    if not res["status"]:
+    if err:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Player {player_id} not found or invalid.",
         )
-
-    # background_tasks.add_task(player.update)
     return player.player_data
 
 
@@ -221,29 +326,118 @@ async def get_player_matches(
     db=Depends(get_db),
 ) -> list[MatchModel] | list:
     player = PlayerManager(id=player_id, db=db)
-    res = await player.load()
+    _, err = await player.load()
 
-    if not res["status"]:
+    if err:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Player {player_id} not found.",
         )
 
-    start, end = min(start, end), max(start, end)
-    return player.get_matches(start=start, end=end)
+    res = player.get_matches(start=start, end=end)
+    if isinstance(res, ErrDataLoadingFailed):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User match data not found"
+        )
+
+    if not isinstance(res, Ok):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Something is wrong",
+        )
+
+    data, err = res
+    return data
 
 
 @app.get("/heroes", response_model=HeroCollection)
 async def get_all_heroes():
-    return await app.hero_manager.get_all_heroes()
+    res = await app.hero_manager.get_all_heroes()
+    if isinstance(res, ErrDataLoadingFailed):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User match data not found"
+        )
+
+    if not isinstance(res, Ok):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Something is wrong",
+        )
+    data, _ = res
+    return data
 
 
 @app.get("/heroes/{hero_id}", response_model=HeroModel)
 async def get_hero(hero_id: int):
-    return await app.hero_manager.get_hero(hero_id)
+    data, err = await app.hero_manager.get_hero(hero_id)
+    if err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Something is wrong",
+        )
+    return data
 
 
 # Trying to explore the httpx since it's nativy async
 @app.get("/matches/{match_id}", response_model=DetailedMatchData)
-async def get_match(match_id: int, manager: MatchManager = Depends()):
-    return await manager.get_match(match_id)
+async def get_match(
+    match_id: int,
+    # background_tasks: BackgroundTasks,
+    manager: MatchManager = Depends(get_match_manager),
+):
+    data, err = await manager.get_match(match_id)
+    if err:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Something is wrong",
+        )
+
+    # background_tasks.add_task(update_stats, data)
+    return data
+
+
+@app.get("/stats/")
+async def get_stats(rating_id: str, types: str, stats_class=Depends(get_stats_classes)):
+    if str(rating_id) not in rating_values:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Bad rating_id {type(rating_id)}, {rating_id}",
+        )
+
+    if types not in ["against", "raw", "with", "xp", "item", "xpm", "gpm"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Wrong types value",
+        )
+
+    # TODO: add model
+    res = await stats_class[types].get(rating=rating_id)
+
+    return res
+
+
+@app.get("/stats/{hero_id}/")
+async def get_hero_stats(
+    rating_id: str,
+    types: str,
+    hero_id: str,
+    stats_class: dict[str, XPM | GPM | Raw | XP | Against | With | Item] = Depends(
+        get_stats_classes
+    ),
+):
+    if str(rating_id) not in rating_values:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Bad rating_id {type(rating_id)}, {rating_id}",
+        )
+
+    if types not in ["against", "raw", "with", "xp", "item", "xpm", "gpm"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Wrong types value",
+        )
+
+    # TODO: add model
+    res = await stats_class[types].get(rating=rating_id, hero_id=hero_id)
+
+    return res

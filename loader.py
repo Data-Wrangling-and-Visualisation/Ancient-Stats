@@ -17,4 +17,5 @@ for dr in listdir('matches'):
         print(dr, file)
         with open(f'matches/{dr}/{file}') as f:
             json = load(f)
+            json['rating_id'] = int(dr)
             manager.save_match(int(file.replace('.json', '')), json)
