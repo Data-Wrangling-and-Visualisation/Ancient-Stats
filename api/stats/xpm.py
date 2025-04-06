@@ -1,6 +1,7 @@
 class XPM:
     def __init__(self, db):
         self.db = db
+
     async def init(self):
         if await self.db['stats'].find_one({"xpm": {'$exists': True}}):
             return
@@ -9,59 +10,35 @@ class XPM:
             rating = str(match['rating_id'])
             for player in match['players']:
                 hero_id = str(player['hero_id'])
-                if hero_id not in xpm:
-                    xpm[hero_id] = {}
-                if rating not in xpm[hero_id]:
-                    xpm[hero_id][rating] = [0, 0]
-                xpm[hero_id][rating][0] += player['benchmarks']['xp_per_min']['raw']
-                xpm[hero_id][rating][1] += 1
-        for hero_id in xpm:
-            xpm[hero_id]['upd'] = True
-        await self.db['stats'].insert_one({'xpm': {'real': xpm}})
+                if rating not in xpm:
+                    xpm[rating] = {}
+                if hero_id not in xpm[rating]:
+                    xpm[rating][hero_id] = [0, 0]
+                xpm[rating][hero_id][0] += player['benchmarks']['xp_per_min']['raw']
+                xpm[rating][hero_id][1] += 1
+        await self.db['stats'].insert_one({'xpm': xpm})
 
     async def update(self, match):
         rating = str(match['rating_id'])
         for player in match['players']:
             hero_id = str(player['hero_id'])
-            wl = await self.db['stats'].find_one({f'xpm.real.{hero_id}.{rating}': {"$exists": True}})
-            if wl:
-                wl = wl['xpm']['real'][hero_id][rating]
-            else:
-                wl = [0, 0]
+            wl = await self.db['stats'].find_one({f'xpm.{rating}.{hero_id}': {"$exists": True}})
+            wl = wl['xpm'][rating][hero_id] if wl else [0, 0]
             wl[0] += player['benchmarks']['xp_per_min']['raw']
             wl[1] += 1
             await self.db['stats'].update_one(
                 {},
-                {'$set': {f'xpm.real.{hero_id}.upd': True}},
-                upsert=True
-            )
-            await self.db['stats'].update_one(
-                {},
-                {'$set': {f'xpm.real.{hero_id}.{rating}': wl}},
+                {'$set': {f'xpm.{rating}.{hero_id}': wl}},
                 upsert=True
             )
 
-    async def get(self, rating):
-        winrate = (await self.db['stats'].find_one({'xpm': {'$exists': True}}))['xpm']['real']
-        for hero_id in winrate:
-            upd = winrate[hero_id].get('upd', False)
-            if upd:
-                items = tuple(winrate[hero_id].items())
-                wl = [wl[0] / wl[1] for rate, wl in items if rate != 'upd']
-                for rate, _ in items:
-                    if rate == 'upd': continue
-                    rate = int(rate)
-                    k = [0.8 ** abs(rate - int(rt)) for rt, _ in items if rt != 'upd']
-                    wr = sum(w * k for w, k in zip(wl, k)) / sum(k)
-                    await self.db['stats'].update_one(
-                        {},
-                        {'$set': {f'xpm.norm.{hero_id}.{rate}': wr}},
-                        upsert=True
-                    )
-                await self.db['stats'].update_one(
-                    {},
-                    {'$set': {f'xpm.real.{hero_id}.upd': False}},
-                )
-        winrate = (await self.db['stats'].find_one())['xpm']['norm']
+    async def get(self, rating, hero_id=None):
+        def proc(xpm):
+            if type(xpm) == list:
+                return xpm[0] / xpm[1]
+            return {i: proc(j) for i, j in xpm.items()}
+
         rating = str(rating)
-        return {hero_id: wr.get(rating, 0) for hero_id, wr in winrate.items()}
+        xpm = (await self.db['stats'].find_one({'xpm': {'$exists': True}}))['xpm'][rating]
+        if hero_id: xpm = xpm[str(hero_id)]
+        return proc(xpm)
