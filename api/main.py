@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 import datetime
 import logging
 import os
@@ -15,31 +18,30 @@ from fastapi import (
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
+from motor.motor_asyncio import AsyncIOMotorClient
+
 from api.models import (
+    DetailedMatchData,
+    HeroCollection,
+    HeroManager,
+    HeroModel,
+    MatchManager,
     MatchModel,
     PlayerManager,
     PlayerModel,
     StatusModel,
-    HeroModel,
-    HeroCollection,
-    HeroManager,
-    MatchManager,
-    DetailedMatchData,
 )
-
+from api.stats import GPM, XPM
+from api.stats.winrate import XP, Against, Item, Raw, With
 from api.utils.errors import (
-    Result,
     Err,
-    Ok,
     ErrDataLoadingFailed,
     ErrHttpxRequest,
     ErrInternal,
     ErrPlayerIdNotFound,
+    Ok,
+    Result,
 )
-from api.stats import GPM, XPM
-from api.stats.winrate import Raw, XP
-
-from motor.motor_asyncio import AsyncIOMotorClient
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -108,6 +110,17 @@ async def lifespan(app: FastAPI):
             logger.info(f"Initialization of Hero Table ended with {err}")
         logger.info("Finishing initialization of Hero Table")
 
+        app.stats_cls = {
+            "against": Against(db=app.db),
+            "raw": Raw(db=app.db),
+            "with": With(db=app.db),
+            "xp": XP(db=app.db),
+            "item": Item(db=app.db),
+            "xpm": XPM(db=app.db),
+            "gpm": GPM(db=app.db),
+        }
+        [await cls.init() for cls in app.stats_cls.values()]
+
         yield
     except Exception as e:
         logger.error(f"An error occurred during startup: {e}")
@@ -146,6 +159,18 @@ async def get_match_manager(db=Depends(get_db)) -> MatchManager:
     return MatchManager(db)
 
 
+async def get_stats_classes() -> (
+    dict[str, XPM | GPM | Raw | XP | Against | With | Item]
+):
+    return app.stats_cls
+
+
+async def update_stats(
+    match_data: MatchModel, stats_classes=Depends(get_stats_classes)
+):
+    [await stats_classes[key].update(match_data) for key in stats_classes.keys()]
+
+
 # TODO: add DB error handling
 async def get_current_user_id(session_id: str = Cookie(None)) -> str:
     if not session_id:
@@ -164,7 +189,9 @@ async def get_current_user_id(session_id: str = Cookie(None)) -> str:
 
 # TODO: add DB error handling
 @app.post("/set-user-id")
-async def set_user_id(response: Response, player_id: int, db=Depends(get_db)):
+async def set_user_id(
+    response: Response, player_id: int, db=Depends(get_db)
+) -> dict[str, str]:
     player = PlayerManager(id=player_id, db=db)
     res = await player.load()
 
@@ -276,7 +303,6 @@ async def update_player_data(player_id: int, db=Depends(get_db)):
 @app.get("/players/{player_id}", response_model=PlayerModel)
 async def get_player(
     player_id: int,
-    # background_tasks: BackgroundTasks,
     db=Depends(get_db),
 ) -> PlayerModel:
     logger.info(f"Fetching data for player {player_id}.")
@@ -289,8 +315,6 @@ async def get_player(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Player {player_id} not found or invalid.",
         )
-
-    # background_tasks.add_task(player.update)
     return player.player_data
 
 
@@ -356,76 +380,64 @@ async def get_hero(hero_id: int):
 
 # Trying to explore the httpx since it's nativy async
 @app.get("/matches/{match_id}", response_model=DetailedMatchData)
-async def get_match(match_id: int, manager: MatchManager = Depends()):
+async def get_match(
+    match_id: int,
+    # background_tasks: BackgroundTasks,
+    manager: MatchManager = Depends(get_match_manager),
+):
     data, err = await manager.get_match(match_id)
     if err:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Something is wrong",
         )
+
+    # background_tasks.add_task(update_stats, data)
     return data
 
 
-@app.get("/stats/gmp")
-async def get_gpm(rating_id: str, db=Depends(get_db)):
-    if rating_id not in rating_values:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Something is wrong",
-        )
-
-    gpm = GPM(db=db)
-    await gpm.init()
-
-    # TODO: add model
-    res = await gpm.get(rating=rating_id)
-
-    return res
-
-
-@app.get("/stats/xpm")
-async def get_xpm(rating_id: str, db=Depends(get_db)):
-    if rating_id not in rating_values:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Something is wrong",
-        )
-
-    xpm = XPM(db=db)
-    await xpm.init()
-
-    # TODO: add model
-    res = await xpm.get(rating=rating_id)
-
-    return res
-
-
-@app.get("/stats/winrate/")
-async def get_winrate_xpm(rating_id: str, types: str, db=Depends(get_db)):
+@app.get("/stats/")
+async def get_stats(rating_id: str, types: str, stats_class=Depends(get_stats_classes)):
     if str(rating_id) not in rating_values:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Bad rating_id {type(rating_id)}, {rating_id}",
         )
 
-    if types not in ["against", "raw", "with", "xp"]:
+    if types not in ["against", "raw", "with", "xp", "item", "xpm", "gpm"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Wrong types value",
         )
 
-    if types == "against":
-        stats_class = ...  # Against(db=db)
-    if types == "raw":
-        stats_class = Raw(db=db)
-    if types == "with":
-        stats_class = ...  # With(db=db)
-    if types == "xp":
-        stats_class = XP(db=db)
+    # TODO: add model
+    res = await stats_class[types].get(rating=rating_id)
 
-    await stats_class.init()
+    return res
+
+
+@app.get("/stats/{hero_id}/")
+async def get_hero_stats(
+    rating_id: str,
+    types: str,
+    hero_id: str,
+    stats_class: dict[str, XPM | GPM | Raw | XP | Against | With | Item] = Depends(
+        get_stats_classes
+    ),
+):
+    if str(rating_id) not in rating_values:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Bad rating_id {type(rating_id)}, {rating_id}",
+        )
+
+    if types not in ["against", "raw", "with", "xp", "item", "xpm", "gpm"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Wrong types value",
+        )
 
     # TODO: add model
-    res = await stats_class.get(rating=rating_id)
+    res = await stats_class[types].get(rating=rating_id, hero_id=hero_id)
 
     return res
