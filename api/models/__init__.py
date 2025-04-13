@@ -7,10 +7,23 @@ package_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if package_dir not in sys.path:
     sys.path.insert(0, package_dir)
 
-from .general_model import StatusModel
+from .general_model import StatusModel, DotaDatabase
 
 from .player_model import PlayerModel
 from .match_model import MatchModel, DetailedMatchData
 from .heros_model import HeroModel, HeroCollection
 
 from .model_managers import MatchManager, HeroManager, PlayerManager
+
+__all__ = [
+    "StatusModel",
+    "PlayerModel",
+    "MatchModel",
+    "DetailedMatchData",
+    "HeroModel",
+    "HeroCollection",
+    "MatchManager",
+    "HeroManager",
+    "PlayerManager",
+    "DotaDatabase",
+]

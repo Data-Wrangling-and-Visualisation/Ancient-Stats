@@ -25,7 +25,7 @@ class Ok(Generic[T]):
 class Err(Generic[E]):
     __slots__ = ("value", "is_error")
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.value = None
         self.is_error = True
 
@@ -54,10 +54,10 @@ def error_handler(
     return wrapper
 
 
-class ErrPlayerIdNotFound(Err):
+class ErrPlayerIdNotFound(Err[None]):
     __slots__ = ("value", "is_error")
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.value = None
         self.is_error = True
 
@@ -71,7 +71,7 @@ class ErrPlayerIdNotFound(Err):
 class ErrDataLoadingFailed(Err):
     __slots__ = ("value", "is_error")
 
-    def __init__(self, msg: str = "default msg of ErrDataLoadingFailed"):
+    def __init__(self, msg: str = "default msg of ErrDataLoadingFailed") -> None:
         self.value = None
         self.is_error = True
 
@@ -85,7 +85,7 @@ class ErrDataLoadingFailed(Err):
 class ErrHttpxRequest(Err):
     __slots__ = ("value", "is_error")
 
-    def __init__(self, msg: str = "default msg of ErrDataLoadingFailed"):
+    def __init__(self, msg: str = "default msg of ErrDataLoadingFailed") -> None:
         self.value = None
         self.is_error = True
 
@@ -99,7 +99,7 @@ class ErrHttpxRequest(Err):
 class ErrInternal(Err):
     __slots__ = ("value", "is_error")
 
-    def __init__(self, msg: str = "default msg of ErrDataLoadingFailed"):
+    def __init__(self, msg: str = "default msg of ErrDataLoadingFailed") -> None:
         self.value = None
         self.is_error = True
 

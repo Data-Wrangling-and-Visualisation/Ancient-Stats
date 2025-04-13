@@ -87,7 +87,7 @@ class PlayerMatchStats(BaseModel):
     benchmarks: PlayerBenchmarks
 
     @field_validator("total_xp", "kills_per_min", "region", mode="after")
-    def handle_null_regen(cls, v):
+    def handle_null_regen(cls, v: float | None):
         if v is None:
             return 0.0
         try:
