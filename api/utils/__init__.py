@@ -6,4 +6,18 @@ package_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if package_dir not in sys.path:
     sys.path.insert(0, package_dir)
 
-from .errors import *
+from .errors import (
+    Err,
+    ErrInternal,
+    ErrPlayerIdNotFound,
+    ErrDataLoadingFailed,
+    ErrHttpxRequest,
+)
+
+__all__ = [
+    "Err",
+    "ErrInternal",
+    "ErrPlayerIdNotFound",
+    "ErrDataLoadingFailed",
+    "ErrHttpxRequest",
+]

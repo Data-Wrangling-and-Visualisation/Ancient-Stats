@@ -52,7 +52,7 @@ class HeroModel(BaseModel):
     localized_name: str
 
     @field_validator("base_health_regen", "base_mana_regen", mode="before")
-    def handle_null_regen(cls, v):
+    def handle_null_regen(cls, v: float | None):
         if v is None:
             return 0.0
         try:
