@@ -123,7 +123,9 @@ async def lifespan(app: FastAPI):
             "xpm": XPM(db=app.db),  # type: ignore
             "gpm": GPM(db=app.db),  # type: ignore
         }
+        logger.info('loaded all sh*asdt')
         [await cls.init() for cls in app.stats_cls.values()]  # type: ignore
+        logger.info('loaded all sh*t')
 
         yield
     except Exception as e:
@@ -177,9 +179,6 @@ async def get_stats_classes() -> (
 
 async def update_stats(
     match_data: MatchModel,
-    stats_classes: dict[str, XPM | GPM | Raw | XP | Against | With | Item] = Depends(
-        get_stats_classes
-    ),
 ) -> None:
     """
     Recalculates statistics with the added match data.
@@ -188,7 +187,8 @@ async def update_stats(
         match_data (MatchModel): match details
         stats_classes (dict[str, XPM  |  GPM  |  Raw  |  XP  |  Against  |  With  |  Item], optional): _description_. Defaults to Depends( get_stats_classes ).
     """
-    [await stats_classes[key].update(match_data) for key in stats_classes.keys()]  # type: ignore
+    stats_classes = await get_stats_classes()
+    [await stats_classes[key].update(match_data.model_dump()) for key in stats_classes.keys()]  # type: ignore
 
 
 # TODO: add DB error handling
@@ -528,7 +528,7 @@ async def get_hero(hero_id: int):
 @app.get("/matches/{match_id}", response_model=DetailedMatchData)
 async def get_match(
     match_id: int,
-    # background_tasks: BackgroundTasks,
+    background_tasks: BackgroundTasks,
     manager: MatchManager = Depends(get_match_manager),
 ):
     """
@@ -560,7 +560,7 @@ async def get_match(
         )
     data, _ = res
 
-    # background_tasks.add_task(update_stats, data)
+    background_tasks.add_task(update_stats, data)
     return data
 
 

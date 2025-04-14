@@ -7,7 +7,8 @@ class With:
             return
         winrate = {}
         async for match in self.db.matches.find({}):
-            rating = str(match['rating_id'])
+            rating = max(i.get('rank_tier', 0) for i in match['players'])
+            rating = str(rating if rating else 43)
             for player_1 in match['players']:
                 for player_2 in match['players']:
                     if player_1['team_number'] != player_2['team_number']: continue
@@ -28,7 +29,8 @@ class With:
         await self.db['stats'].insert_one({'winrate': {'with': winrate}})
 
     async def update(self, match):
-        rating = str(match['rating_id'])
+        rating = max(i.get('rank_tier', 0) for i in match['players'])
+        rating = str(rating if rating else 43)
         for player_1 in match['players']:
             for player_2 in match['players']:
                 if player_1['team_number'] != player_2['team_number']: continue

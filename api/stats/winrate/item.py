@@ -7,7 +7,8 @@ class Item:
             return
         winrate = {}
         async for match in self.db.matches.find({}):
-            rating = str(match['rating_id'])
+            rating = max(i.get('rank_tier', 0) for i in match['players'])
+            rating = str(rating if rating else 43)
             for player in match['players']:
                 hero_id = str(player['hero_id'])
                 for item in [f'item_{i}' for i in range(6)] + [f'backpack_{i}' for i in range(3)]:
@@ -27,7 +28,8 @@ class Item:
         await self.db['stats'].insert_one({'winrate': {'item': winrate}})
 
     async def update(self, match):
-        rating = str(match['rating_id'])
+        rating = max(i.get('rank_tier', 0) for i in match['players'])
+        rating = str(rating if rating else 43)
         for player in match['players']:
             hero_id = str(player['hero_id'])
             for item in [f'item_{i}' for i in range(6)] + [f'backpack_{i}' for i in range(3)]:
