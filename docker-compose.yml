@@ -17,6 +17,9 @@ services:
     environment:
       - MONGO_URL=mongodb://mongo:27017
       - MONGO_DB=db
+      - LOAD_DB=YES
+    volumes:
+      - ./matches:/matches
     networks:
       - mongo
 

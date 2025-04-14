@@ -7,7 +7,8 @@ class GPM:
             return
         gpm = {}
         async for match in self.db.matches.find({}):
-            rating = str(match['rating_id'])
+            rating = max(i.get('rank_tier', 0) for i in match['players'])
+            rating = str(rating if rating else 43)
             for player in match['players']:
                 hero_id = str(player['hero_id'])
                 if rating not in gpm:
@@ -19,7 +20,8 @@ class GPM:
         await self.db['stats'].insert_one({'gpm': gpm})
 
     async def update(self, match):
-        rating = str(match['rating_id'])
+        rating = max(i.get('rank_tier', 0) for i in match['players'])
+        rating = str(rating if rating else 43)
         for player in match['players']:
             hero_id = str(player['hero_id'])
             wl = await self.db['stats'].find_one({f'gpm.{rating}.{hero_id}': {"$exists": True}})

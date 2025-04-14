@@ -78,6 +78,7 @@ class PlayerMatchStats(BaseModel):
     region: Optional[int] = None
     isRadiant: bool
     win: int
+    rank_tier: int
     lose: int
     total_gold: int
     total_xp: Optional[int] = None

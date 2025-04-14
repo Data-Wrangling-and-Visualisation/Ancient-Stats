@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 import datetime
 import logging
 import os
@@ -34,6 +33,8 @@ from api.models import (
     StatusModel,
     DotaDatabase,
 )
+from os import listdir
+from json import load
 from api.stats import GPM, XPM
 from api.stats.winrate import XP, Against, Item, Raw, With
 from api.utils.errors import (
@@ -52,7 +53,7 @@ load_dotenv()
 
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
 MONGO_DB = os.getenv("MONGO_DB", "db")
-
+LOAD_DB = os.getenv('LOAD_DB', "YES")
 
 # TODO: Move to the dedicated function
 rating_values = [
@@ -95,6 +96,19 @@ rating_values = [
 ]
 
 
+async def data_loader(db):
+    manager = MatchManager(db)
+    logger.debug("Running loader")
+    for dr in listdir('/matches'):
+        for file in listdir(f'/matches/{dr}'):
+            print(dr, file)
+            with open(f'/matches/{dr}/{file}') as f:
+                json = load(f)
+                for i in json['players']:
+                    i['rank_tier'] = int(dr)
+                await manager.save_match(int(file.replace('.json', '')), json)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
@@ -114,6 +128,11 @@ async def lifespan(app: FastAPI):
             logger.info(f"Initialization of Hero Table ended with {err}")
         logger.info("Finishing initialization of Hero Table")
 
+        if LOAD_DB == "YES":
+            await app.db['matches'].drop()
+            await data_loader(db=app.db)
+            await app.db['stats'].drop()
+
         app.stats_cls = {
             "against": Against(db=app.db),  # type: ignore
             "raw": Raw(db=app.db),  # type: ignore
@@ -123,6 +142,7 @@ async def lifespan(app: FastAPI):
             "xpm": XPM(db=app.db),  # type: ignore
             "gpm": GPM(db=app.db),  # type: ignore
         }
+
         [await cls.init() for cls in app.stats_cls.values()]  # type: ignore
 
         yield
@@ -170,16 +190,13 @@ async def get_match_manager(db: DotaDatabase = Depends(get_db)) -> MatchManager:
 
 
 async def get_stats_classes() -> (
-    dict[str, XPM | GPM | Raw | XP | Against | With | Item]
+        dict[str, XPM | GPM | Raw | XP | Against | With | Item]
 ):
     return app.stats_cls
 
 
 async def update_stats(
-    match_data: MatchModel,
-    stats_classes: dict[str, XPM | GPM | Raw | XP | Against | With | Item] = Depends(
-        get_stats_classes
-    ),
+        match_data: MatchModel,
 ) -> None:
     """
     Recalculates statistics with the added match data.
@@ -188,7 +205,8 @@ async def update_stats(
         match_data (MatchModel): match details
         stats_classes (dict[str, XPM  |  GPM  |  Raw  |  XP  |  Against  |  With  |  Item], optional): _description_. Defaults to Depends( get_stats_classes ).
     """
-    [await stats_classes[key].update(match_data) for key in stats_classes.keys()]  # type: ignore
+    stats_classes = await get_stats_classes()
+    [await stats_classes[key].update(match_data.model_dump()) for key in stats_classes.keys()]  # type: ignore
 
 
 # TODO: add DB error handling
@@ -224,7 +242,7 @@ async def get_current_user_id(session_id: str = Cookie(None)) -> str:
 # TODO: add DB error handling
 @app.post("/set-user-id")
 async def set_user_id(
-    response: Response, player_id: int, db=Depends(get_db)
+        response: Response, player_id: int, db=Depends(get_db)
 ) -> dict[str, str]:
     """
     Sets the user ID in the session.
@@ -284,8 +302,8 @@ async def set_user_id(
 
 @app.get("/me", response_model=PlayerModel)
 async def get_current_player(
-    player_id: int = Depends(get_current_user_id),
-    db=Depends(get_db),
+        player_id: int = Depends(get_current_user_id),
+        db=Depends(get_db),
 ) -> PlayerModel:
     """
     Gets the current player data.
@@ -316,10 +334,10 @@ async def get_current_player(
 
 @app.get("/me/matches", response_model=list[MatchModel])
 async def get_current_user_matches(
-    start: int = 0,
-    end: int = 20,
-    player_id: int = Depends(get_current_user_id),
-    db=Depends(get_db),
+        start: int = 0,
+        end: int = 20,
+        player_id: int = Depends(get_current_user_id),
+        db=Depends(get_db),
 ) -> list[MatchModel] | List[Any]:
     """
     Gets the current user matches.
@@ -393,8 +411,8 @@ async def update_player_data(player_id: int, db=Depends(get_db)) -> StatusModel:
 
 @app.get("/players/{player_id}", response_model=PlayerModel)
 async def get_player(
-    player_id: int,
-    db=Depends(get_db),
+        player_id: int,
+        db=Depends(get_db),
 ) -> PlayerModel:
     """
     Endpoint providing player data.
@@ -426,10 +444,10 @@ async def get_player(
 
 @app.get("/players/{player_id}/matches", response_model=list[MatchModel])
 async def get_player_matches(
-    player_id: int,
-    start: int = 0,
-    end: int = 20,
-    db=Depends(get_db),
+        player_id: int,
+        start: int = 0,
+        end: int = 20,
+        db=Depends(get_db),
 ) -> list[MatchModel] | list:
     """
     Endpoint providing player matches.
@@ -527,9 +545,9 @@ async def get_hero(hero_id: int):
 # Trying to explore the httpx since it's nativy async
 @app.get("/matches/{match_id}", response_model=DetailedMatchData)
 async def get_match(
-    match_id: int,
-    # background_tasks: BackgroundTasks,
-    manager: MatchManager = Depends(get_match_manager),
+        match_id: int,
+        background_tasks: BackgroundTasks,
+        manager: MatchManager = Depends(get_match_manager),
 ):
     """
     Endpoint providing detailed match data.
@@ -560,7 +578,7 @@ async def get_match(
         )
     data, _ = res
 
-    # background_tasks.add_task(update_stats, data)
+    background_tasks.add_task(update_stats, data)
     return data
 
 
@@ -599,12 +617,12 @@ async def get_stats(rating_id: str, types: str, stats_class=Depends(get_stats_cl
 
 @app.get("/stats/{hero_id}/")
 async def get_hero_stats(
-    rating_id: str,
-    types: str,
-    hero_id: str,
-    stats_class: dict[str, XPM | GPM | Raw | XP | Against | With | Item] = Depends(
-        get_stats_classes
-    ),
+        rating_id: str,
+        types: str,
+        hero_id: str,
+        stats_class: dict[str, XPM | GPM | Raw | XP | Against | With | Item] = Depends(
+            get_stats_classes
+        ),
 ):
     """
     Endpoint providing hero stats.
@@ -630,6 +648,6 @@ async def get_hero_stats(
         )
 
     # TODO: add model
-    res = await stats_class[types].get(rating=rating_id, hero_id=hero_id)
+    res = await app.stats_cls[types].get(rating=rating_id, hero_id=hero_id)
 
     return res

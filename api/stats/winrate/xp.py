@@ -7,7 +7,8 @@ class XP:
             return
         winrate = {}
         async for match in self.db.matches.find({}):
-            rating = str(match['rating_id'])
+            rating = max(i.get('rank_tier', 0) for i in match['players'])
+            rating = str(rating if rating else 43)
             for player in match['players']:
                 hero_id = str(player['hero_id'])
                 lvl = str(player['level'])
@@ -26,7 +27,8 @@ class XP:
         await self.db['stats'].insert_one({'winrate': {'xp': winrate}})
 
     async def update(self, match):
-        rating = str(match['rating_id'])
+        rating = max(i.get('rank_tier', 0) for i in match['players'])
+        rating = str(rating if rating else 43)
         for player in match['players']:
             hero_id = str(player['hero_id'])
             lvl = str(player['level'])
