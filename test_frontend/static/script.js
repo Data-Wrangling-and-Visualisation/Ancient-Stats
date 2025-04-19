@@ -16,7 +16,6 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        // Show loading state
         statsBody.innerHTML = '<tr><td colspan="7" class="text-center">Loading data...</td></tr>';
         
         try {
@@ -54,13 +53,11 @@ document.addEventListener('DOMContentLoaded', function() {
         heroData.forEach(hero => {
             const row = document.createElement('tr');
             
-            // Determine win rate class for coloring
             let winRateClass = '';
             if (hero.win_rate >= 60) winRateClass = 'win-rate-high';
             else if (hero.win_rate >= 45) winRateClass = 'win-rate-medium';
             else winRateClass = 'win-rate-low';
             
-            // Format duration (seconds to minutes:seconds)
             const durationMinutes = Math.floor(hero.avg_duration / 60);
             const durationSeconds = Math.floor(hero.avg_duration % 60);
             const formattedDuration = `${durationMinutes}:${durationSeconds.toString().padStart(2, '0')}`;
@@ -82,11 +79,9 @@ document.addEventListener('DOMContentLoaded', function() {
     function displayHeroChart(heroData) {
         const ctx = document.getElementById('heroChart').getContext('2d');
         
-        // Prepare data for chart
         const labels = heroData.map(hero => hero.name);
         const data = heroData.map(hero => hero.matches);
         
-        // Generate random colors for each hero
         const backgroundColors = heroData.map(() => {
             const r = Math.floor(Math.random() * 255);
             const g = Math.floor(Math.random() * 255);
@@ -94,12 +89,10 @@ document.addEventListener('DOMContentLoaded', function() {
             return `rgba(${r}, ${g}, ${b}, 0.7)`;
         });
         
-        // Destroy previous chart if it exists
         if (heroChart) {
             heroChart.destroy();
         }
         
-        // Create new chart
         heroChart = new Chart(ctx, {
             type: 'pie',
             data: {

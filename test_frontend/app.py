@@ -4,10 +4,9 @@ import requests
 app = Flask(__name__)
 
 # Configuration
-BASE_API_URL = "http://localhost:8080"  # Your Dota 2 API base URL
+BASE_API_URL = "http://localhost:8080"
 CACHE_TIMEOUT = 300  # 5 minutes cache for hero data
 
-# In-memory cache for hero data (simple implementation)
 hero_cache = {}
 
 @app.route('/')
@@ -19,7 +18,6 @@ def get_player_stats(account_id):
     try:
         match_count = request.args.get('count', default=50, type=int)
         
-        # Fetch matches data from the Dota 2 API
         matches_url = f"{BASE_API_URL}/players/{account_id}/matches?start=0&end={match_count}"
         matches_response = requests.get(matches_url)
         matches_response.raise_for_status()
@@ -30,7 +28,6 @@ def get_player_stats(account_id):
         else:
             print(f"Matches found: {len(matches)}")
         
-        # Process matches data
         hero_stats = {}
 
         for match in matches:
@@ -53,7 +50,6 @@ def get_player_stats(account_id):
             hero_stats[hero_id]['assists'] += match['assists']
             hero_stats[hero_id]['durations'] += match['duration']
         
-        # Get hero names
         hero_data = []
         for hero_id, stats in hero_stats.items():
             hero_name = get_hero_name(hero_id)
@@ -101,7 +97,6 @@ def get_hero_name(hero_id):
         hero_data = hero_response.json()
         hero_name = process_hero_name(hero_data.get('name', f"Hero {hero_id}"))
         
-        # Cache the hero name
         hero_cache[hero_id] = hero_name
         return hero_name
         
