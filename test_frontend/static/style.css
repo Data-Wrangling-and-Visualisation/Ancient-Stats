@@ -1,0 +1,61 @@
+body {
+    background-color: #f8f9fa;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.card {
+    border-radius: 10px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+    border: none;
+}
+
+.card-header {
+    background-color: #89dbd2;
+    color: white;
+    border-radius: 10px 10px 0 0 !important;
+}
+
+#fetchBtn {
+    background-color: #89dbd2;
+    color: white;
+    border: none;
+}
+
+#fetchBtn:hover {
+    background-color: #89dbd2;
+}
+
+.table {
+    margin-bottom: 0;
+}
+
+.table th {
+    font-weight: 600;
+}
+
+#fetchBtn {
+    height: 38px;
+}
+
+.win-rate-cell {
+    font-weight: bold;
+}
+
+.win-rate-high {
+    color: #28a745;
+}
+
+.win-rate-medium {
+    color: #ffc107;
+}
+
+.win-rate-low {
+    color: #dc3545;
+}
+
+.loading-spinner {
+    display: none;
+    text-align: center;
+    padding: 20px;
+}
