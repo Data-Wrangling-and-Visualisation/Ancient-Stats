@@ -59,3 +59,43 @@ body {
     text-align: center;
     padding: 20px;
 }
+
+#heroWinrateGraphContainer {
+    transition: all 0.3s ease;
+}
+
+.hero-row {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.hero-row:hover {
+    background-color: rgba(137, 219, 210, 0.1);
+}
+
+.active-hero-row {
+    background-color: rgba(137, 219, 210, 0.2);
+}
+
+#heroGraphTitle {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+#heroNameBadge {
+    font-size: 0.9rem;
+    padding: 5px 10px;
+    background-color: #89dbd2 !important;
+}
+
+#withChart {
+    margin-bottom: 50px; 
+}
+
+.chartjs-tooltip {
+    opacity: 1 !important;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    border-radius: 3px;
+    padding: 5px 10px;
+}

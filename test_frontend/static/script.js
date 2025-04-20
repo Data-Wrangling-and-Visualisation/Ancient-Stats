@@ -4,6 +4,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const matchCountInput = document.getElementById('matchCount');
     const statsBody = document.getElementById('statsBody');
     let heroChart = null;
+    let heroWinrateGraph = null;
+    let currentOpenHeroId = null;
 
     fetchBtn.addEventListener('click', fetchPlayerStats);
 
@@ -19,7 +21,6 @@ document.addEventListener('DOMContentLoaded', function() {
         statsBody.innerHTML = '<tr><td colspan="7" class="text-center">Loading data...</td></tr>';
         
         try {
-            // Fetch data from our Flask API
             const response = await fetch(`http://localhost:5000/api/player/${accountId}/stats?count=${matchCount}`);
             
             if (!response.ok) {
@@ -34,10 +35,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
-            // Display data in table
             displayHeroStats(data.heroes);
             
-            // Display pie chart
             displayHeroChart(data.heroes);
             
         } catch (error) {
@@ -46,12 +45,14 @@ document.addEventListener('DOMContentLoaded', function() {
             statsBody.innerHTML = `<tr><td colspan="7" class="text-center">Error: ${error.message}</td></tr>`;
         }
     }
-    
+
     function displayHeroStats(heroData) {
         statsBody.innerHTML = '';
         
         heroData.forEach(hero => {
             const row = document.createElement('tr');
+            row.className = 'hero-row';
+            row.dataset.heroId = hero.hero_id;
             
             let winRateClass = '';
             if (hero.win_rate >= 60) winRateClass = 'win-rate-high';
@@ -72,7 +73,123 @@ document.addEventListener('DOMContentLoaded', function() {
                 <td>${formattedDuration}</td>
             `;
             
+            row.addEventListener('click', () => toggleHeroWinrateGraph(hero.hero_id, hero.name));
             statsBody.appendChild(row);
+        });
+    }
+
+    async function toggleHeroWinrateGraph(heroId, heroName) {
+        const container = document.getElementById('heroWinrateGraphContainer');
+        const heroNameBadge = document.getElementById('heroNameBadge');
+        const rows = document.querySelectorAll('.hero-row');
+
+        heroNameBadge.textContent = heroName;
+
+        rows.forEach(row => {
+            if (row.dataset.heroId === heroId.toString()) {
+                row.classList.toggle('active-hero-row');
+            } else {
+                row.classList.remove('active-hero-row');
+            }
+        });
+
+        if (currentOpenHeroId === heroId) {
+            container.style.display = container.style.display === 'none' ? 'block' : 'none';
+            return;
+        }
+
+        container.style.display = 'block';
+        document.getElementById('heroWinrateGraph').innerHTML = '<div class="text-center p-2">Loading winrate data...</div>';
+        
+        currentOpenHeroId = heroId;
+        
+        try {
+            const response = await fetch(`/api/hero/${heroId}/winrate-by-level`);
+            
+            if (!response.ok) {
+                throw new Error('Failed to fetch winrate data');
+            }
+            
+            const data = await response.json();
+
+            if (currentOpenHeroId === heroId) {
+                heroNameBadge.textContent = data.hero_name;
+                renderHeroWinrateGraph(data.hero_name, data.levels, data.winrates);
+            }
+        } catch (error) {
+            console.error('Error fetching hero winrate data:', error);
+            document.getElementById('heroWinrateGraph').innerHTML = 
+                `<div class="text-center p-2 text-danger">Error: ${error.message}</div>`;
+        }
+    }
+
+    function renderHeroWinrateGraph(heroName, levels, winrates) {
+        const ctx = document.getElementById('heroWinrateGraph').getContext('2d');
+
+        if (heroWinrateGraph) {
+            heroWinrateGraph.destroy();
+        }
+        
+        heroWinrateGraph = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: levels,
+                datasets: [{
+                    label: `${heroName} Winrate`,
+                    data: winrates,
+                    borderColor: '#89dbd2',
+                    backgroundColor: 'rgba(137, 219, 210, 0.1)',
+                    borderWidth: 2,
+                    pointBackgroundColor: '#89dbd2',
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    tension: 0.1,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            title: function(context) {
+                                return `${heroName} - Level ${context[0].label}`;
+                            },
+                            label: function(context) {
+                                return `${context.parsed.y.toFixed(1)}% winrate`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Hero Level'
+                        },
+                        grid: {
+                            display: false
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Winrate %'
+                        },
+                        min: 0,
+                        max: 100,
+                        ticks: {
+                            callback: function(value) {
+                                return value + '%';
+                            }
+                        }
+                    }
+                }
+            }
         });
     }
     

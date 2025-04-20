@@ -65,7 +65,6 @@ def get_player_stats(account_id):
                 'avg_duration': stats['durations'] / stats['matches']
             })
         
-        # Sort by most played heroes
         hero_data.sort(key=lambda x: x['matches'], reverse=True)
         
         return jsonify({
@@ -102,6 +101,68 @@ def get_hero_name(hero_id):
         
     except requests.exceptions.RequestException:
         return f"Hero {hero_id}"
+    
+@app.route('/api/hero/<int:hero_id>/winrate-by-level')
+def get_hero_winrate_by_level(hero_id):
+    try:
+        winrate_url = f"{BASE_API_URL}/stats/{hero_id}/?rating_id=43&types=xp"
+        winrate_response = requests.get(winrate_url)
+        winrate_response.raise_for_status()
+        winrate_data = winrate_response.json()
+        
+        processed_data = {
+            "hero_id": hero_id,
+            "hero_name": get_hero_name(hero_id),
+            "levels": [],
+            "winrates": []
+        }
+        
+        for level in sorted(map(int, winrate_data.keys())):
+            processed_data["levels"].append(level)
+            processed_data["winrates"].append(winrate_data[str(level)] * 100)
+        
+        return jsonify(processed_data)
+        
+    except requests.exceptions.RequestException as e:
+        return jsonify({"error": str(e)}), 500
+    except Exception as e:
+        return jsonify({"error": "Internal server error"}), 500
+
+@app.route('/hero-stats')
+def hero_stats():
+    return render_template('hero_stats.html')
+
+@app.route('/api/heroes')
+def get_all_heroes():
+    try:
+        heroes_url = f"{BASE_API_URL}/heroes"
+        heroes_response = requests.get(heroes_url)
+        heroes_response.raise_for_status()
+        heroes_data = heroes_response.json()
+        
+        processed_heroes = []
+        for hero_data in heroes_data.get("heroes"):
+            processed_heroes.append({
+                "id": int(hero_data.get("id")),
+                "name": process_hero_name(hero_data.get("name"))
+            })
+        
+        return jsonify(processed_heroes)
+    except requests.exceptions.RequestException as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/hero/<int:hero_id>/stats/<int:rating_id>/<string:stat_type>')
+def get_hero_stats(hero_id, rating_id, stat_type):
+    if stat_type not in ['xp', 'with', 'item']:
+        return jsonify({"error": "Invalid stat type"}), 400
+    
+    try:
+        stats_url = f"{BASE_API_URL}/stats/{hero_id}/?rating_id={rating_id}&types={stat_type}"
+        stats_response = requests.get(stats_url)
+        stats_response.raise_for_status()
+        return jsonify(stats_response.json())
+    except requests.exceptions.RequestException as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

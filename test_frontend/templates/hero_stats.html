@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dota 2 Hero Stats</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="../static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .chart-container {
+            height: 400px;
+            margin-bottom: 30px;
+        }
+        .chart-title {
+            color: #89dbd2;
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <h1 class="text-center mb-4">Dota 2 Hero Statistics</h1>
+        
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label for="heroId" class="form-label">Hero ID</label>
+                            <input type="number" class="form-control" id="heroId" placeholder="Enter hero ID (1-145)" min="1" max="145">
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="mb-3">
+                            <label for="ratingId" class="form-label">Rank (11-43)</label>
+                            <input type="number" class="form-control" id="ratingId" placeholder="Enter rank (11-43)" min="11" max="43" value="43">
+                        </div>
+                    </div>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button id="fetchBtn" class="btn btn-primary w-100">Get Stats</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="loadingIndicator" class="text-center mb-4" style="display: none;">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p>Loading hero data...</p>
+        </div>
+
+        <div id="heroInfo" class="text-center mb-4" style="display: none;">
+            <h3 id="heroNameDisplay" class="mb-3"></h3>
+        </div>
+
+        <div id="chartsContainer" style="display: none;">
+            <div class="row">
+                <div class="col-md-12">
+                    <div class="chart-container">
+                        <h4 class="chart-title">Winrate by Hero Level</h4>
+                        <canvas id="xpChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="col-md-12">
+                    <div class="chart-container">
+                        <h4 class="chart-title">Winrate with Other Heroes</h4>
+                        <canvas id="withChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="col-md-12">
+                    <div class="chart-container">
+                        <h4 class="chart-title">Winrate with Items</h4>
+                        <canvas id="itemChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="../static/hero_stats.js"></script>
+</body>
+</html>
