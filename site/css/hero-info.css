@@ -1,0 +1,138 @@
+body {
+  background-color: #0a0a12;
+  color: #e0e0e0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  margin: 0;
+  padding: 0;
+}
+
+.main-nav {
+  background-color: #0d1021;
+  padding: 12px 0;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+  border-bottom: 1px solid #1e3a8a;
+}
+
+.menu {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  justify-content: center;
+}
+
+.menu li {
+  margin: 0 20px;
+}
+
+.menu a {
+  color: #93c5fd;
+  text-decoration: none;
+  font-size: 18px;
+  padding: 8px 16px;
+  border-radius: 4px;
+  transition: all 0.3s ease;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.menu a:hover {
+  background-color: #1e3a8a;
+  color: #ffffff;
+  text-shadow: 0 0 5px #3b82f6;
+}
+
+.menu a.current {
+  background-color: #1e40af;
+  color: #ffffff;
+  box-shadow: 0 0 10px #3b82f6;
+}
+
+.container {
+  max-width: 900px;
+  margin: 40px auto;
+  padding: 20px;
+}
+
+.hero-info-details {
+  display: flex;
+  flex-direction: column;
+}
+
+.hero-info-header {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  margin-bottom: 30px;
+}
+
+.hero-info-header img {
+  max-width: 200px; /* Картинка будет растягиваться по ширине контейнера */
+  height: auto; /* Высота картинки будет автоматически подстраиваться */
+  border-radius: 12px; /* Сглаживаем углы картинки */
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3); /* Тень для картинки */
+}
+
+.hero-info-info h1 {
+  margin: 0;
+  font-size: 36px;
+  color: #3b82f6;
+  text-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
+}
+
+.hero-info-info p {
+  font-size: 16px;
+  margin: 4px 0;
+}
+
+.hero-info-submenu {
+  margin-top: 20px;
+}
+
+.submenu {
+  list-style: none;
+  display: flex;
+  justify-content: center;
+  padding: 0;
+  margin: 0;
+}
+
+.submenu-item {
+  margin: 0 15px;
+  padding: 10px 20px;
+  color: #93c5fd;
+  text-decoration: none;
+  font-size: 18px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.submenu-item:hover {
+  background-color: #3b82f6;
+  color: #ffffff;
+}
+
+.submenu-item.active {
+  background-color: #2563eb;
+  color: #ffffff;
+  box-shadow: 0 0 10px #3b82f6;
+}
+
+.hero-info-content h2 {
+  font-size: 24px;
+  margin-bottom: 10px;
+  border-bottom: 2px solid #3b82f6;
+  padding-bottom: 5px;
+}
+
+#hero-info-stats-list {
+  list-style: none;
+  padding-left: 0;
+}
+
+#hero-info-stats-list li {
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
