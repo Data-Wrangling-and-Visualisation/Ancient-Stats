@@ -8,9 +8,9 @@ const RATING_ID = 43;
 
 Promise.all([
   fetch("constants/heroes.json").then(res => res.json()),
-  fetch(`http://localhost:5000/?rating_id=${RATING_ID}&types=xpm`).then(res => res.json()),
-  fetch(`http://localhost:5000/?rating_id=${RATING_ID}&types=gpm`).then(res => res.json()),
-  fetch(`http://localhost:5000/?rating_id=${RATING_ID}&types=raw`).then(res => res.json())
+  fetch(`http://localhost:8080/stats/?rating_id=${RATING_ID}&types=xpm`).then(res => res.json()),
+  fetch(`http://localhost:8080/stats/?rating_id=${RATING_ID}&types=gpm`).then(res => res.json()),
+  fetch(`http://localhost:8080/stats/?rating_id=${RATING_ID}&types=raw`).then(res => res.json())
 ])
 .then(([heroesJson, xpmData, gpmData, winrateRaw]) => {
   heroesData = Object.values(heroesJson);

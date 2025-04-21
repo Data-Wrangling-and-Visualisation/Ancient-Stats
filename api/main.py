@@ -18,6 +18,7 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+from pydantic import BaseModel
 
 from typing import Any, List
 
@@ -53,7 +54,7 @@ load_dotenv()
 
 MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
 MONGO_DB = os.getenv("MONGO_DB", "db")
-LOAD_DB = os.getenv('LOAD_DB', "YES")
+LOAD_DB = os.getenv("LOAD_DB", "YES")
 
 # TODO: Move to the dedicated function
 rating_values = [
@@ -99,14 +100,14 @@ rating_values = [
 async def data_loader(db):
     manager = MatchManager(db)
     logger.debug("Running loader")
-    for dr in listdir('/matches'):
-        for file in listdir(f'/matches/{dr}'):
+    for dr in listdir("/matches"):
+        for file in listdir(f"/matches/{dr}"):
             print(dr, file)
-            with open(f'/matches/{dr}/{file}') as f:
+            with open(f"/matches/{dr}/{file}") as f:
                 json = load(f)
-                for i in json['players']:
-                    i['rank_tier'] = int(dr)
-                await manager.save_match(int(file.replace('.json', '')), json)
+                for i in json["players"]:
+                    i["rank_tier"] = int(dr)
+                await manager.save_match(int(file.replace(".json", "")), json)
 
 
 @asynccontextmanager
@@ -116,9 +117,7 @@ async def lifespan(app: FastAPI):
         app.mongo_client = AsyncIOMotorClient(MONGO_URL)  # type: ignore
         app.db = app.mongo_client[MONGO_DB]  # type: ignore
 
-        await app.db.sessions.create_index(
-            [("created_at", 1)], expireAfterSeconds=86400
-        )
+        await app.db.sessions.create_index([("created_at", 1)], expireAfterSeconds=86400)
         logger.info("Connected to MongoDB.")
 
         logger.info("Initializing Hero Table")
@@ -129,9 +128,9 @@ async def lifespan(app: FastAPI):
         logger.info("Finishing initialization of Hero Table")
 
         if LOAD_DB == "YES":
-            await app.db['matches'].drop()
+            await app.db["matches"].drop()
             await data_loader(db=app.db)
-            await app.db['stats'].drop()
+            await app.db["stats"].drop()
 
         app.stats_cls = {
             "against": Against(db=app.db),  # type: ignore
@@ -164,14 +163,18 @@ app = FastAPI(lifespan=lifespan, title="AncientStats")
 origins = [
     # need to add here url of the services / apps that will be used for frontend
     "http://localhost:8080",
+    "http://localhost:63342",
+    "http://localhost:5173",
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,
 )
 
 
@@ -189,14 +192,12 @@ async def get_match_manager(db: DotaDatabase = Depends(get_db)) -> MatchManager:
     return MatchManager(db)
 
 
-async def get_stats_classes() -> (
-        dict[str, XPM | GPM | Raw | XP | Against | With | Item]
-):
+async def get_stats_classes() -> dict[str, XPM | GPM | Raw | XP | Against | With | Item]:
     return app.stats_cls
 
 
 async def update_stats(
-        match_data: MatchModel,
+    match_data: MatchModel,
 ) -> None:
     """
     Recalculates statistics with the added match data.
@@ -224,32 +225,28 @@ async def get_current_user_id(session_id: str = Cookie(None)) -> str:
         HTTPException: If the session ID is missing or invalid.
     """
     if not session_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Session ID missing"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Session ID missing")
 
-    session: dict[str, Any] | None = await app.db.sessions.find_one(
-        {"session_id": session_id}
-    )
+    session: dict[str, Any] | None = await app.db.sessions.find_one({"session_id": session_id})
     if not session:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Invalid session"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid session")
 
     return session["user_id"]
 
 
-# TODO: add DB error handling
+class UserIdRequest(BaseModel):
+    player_id: int
+
+
 @app.post("/set-user-id")
-async def set_user_id(
-        response: Response, player_id: int, db=Depends(get_db)
-) -> dict[str, str]:
+async def set_user_id(request: UserIdRequest, response: Response, db=Depends(get_db)) -> dict[str, str]:
     """
     Sets the user ID in the session.
 
     Args:
+        request (UserIdRequest): Request body containing player_id
         response (Response): response object
-        player_id (int): player ID
+        db: database connection
 
     Returns:
         dict[str, str]: session ID
@@ -258,20 +255,14 @@ async def set_user_id(
         HTTPException: If the player ID is not found or the data loading fails.
     """
 
-    player = PlayerManager(id=player_id, db=db)
-    res: Ok[None] | ErrPlayerIdNotFound | ErrDataLoadingFailed | Err[Any] = (
-        await player.load()
-    )
+    player = PlayerManager(id=request.player_id, db=db)
+    res: Ok[None] | ErrPlayerIdNotFound | ErrDataLoadingFailed | Err[Any] = await player.load()
 
     if isinstance(res, ErrPlayerIdNotFound):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     if isinstance(res, ErrDataLoadingFailed):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User match data not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User match data not found")
 
     if not isinstance(res, Ok):
         raise HTTPException(
@@ -283,7 +274,7 @@ async def set_user_id(
     await db.sessions.insert_one(
         {
             "session_id": session_id,
-            "user_id": player_id,
+            "user_id": request.player_id,
             "created_at": datetime.datetime.now(datetime.timezone.utc),
         }
     )
@@ -302,8 +293,8 @@ async def set_user_id(
 
 @app.get("/me", response_model=PlayerModel)
 async def get_current_player(
-        player_id: int = Depends(get_current_user_id),
-        db=Depends(get_db),
+    player_id: int = Depends(get_current_user_id),
+    db=Depends(get_db),
 ) -> PlayerModel:
     """
     Gets the current player data.
@@ -325,19 +316,17 @@ async def get_current_player(
     _, err = await player.load()
 
     if err:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     return player.player_data
 
 
 @app.get("/me/matches", response_model=list[MatchModel])
 async def get_current_user_matches(
-        start: int = 0,
-        end: int = 20,
-        player_id: int = Depends(get_current_user_id),
-        db=Depends(get_db),
+    start: int = 0,
+    end: int = 20,
+    player_id: int = Depends(get_current_user_id),
+    db=Depends(get_db),
 ) -> list[MatchModel] | List[Any]:
     """
     Gets the current user matches.
@@ -371,9 +360,7 @@ async def get_current_user_matches(
 
     res = player.get_matches(start=start, end=end)
     if isinstance(res, ErrDataLoadingFailed):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User match data not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User match data not found")
 
     if not isinstance(res, Ok):
         raise HTTPException(
@@ -411,8 +398,8 @@ async def update_player_data(player_id: int, db=Depends(get_db)) -> StatusModel:
 
 @app.get("/players/{player_id}", response_model=PlayerModel)
 async def get_player(
-        player_id: int,
-        db=Depends(get_db),
+    player_id: int,
+    db=Depends(get_db),
 ) -> PlayerModel:
     """
     Endpoint providing player data.
@@ -444,10 +431,10 @@ async def get_player(
 
 @app.get("/players/{player_id}/matches", response_model=list[MatchModel])
 async def get_player_matches(
-        player_id: int,
-        start: int = 0,
-        end: int = 20,
-        db=Depends(get_db),
+    player_id: int,
+    start: int = 0,
+    end: int = 20,
+    db=Depends(get_db),
 ) -> list[MatchModel] | list:
     """
     Endpoint providing player matches.
@@ -476,9 +463,7 @@ async def get_player_matches(
 
     res = player.get_matches(start=start, end=end)
     if isinstance(res, ErrDataLoadingFailed):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User match data not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User match data not found")
 
     if not isinstance(res, Ok):
         raise HTTPException(
@@ -505,9 +490,7 @@ async def get_all_heroes():
 
     res = await app.hero_manager.get_all_heroes()
     if isinstance(res, ErrDataLoadingFailed):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User match data not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User match data not found")
 
     if not isinstance(res, Ok):
         raise HTTPException(
@@ -545,9 +528,9 @@ async def get_hero(hero_id: int):
 # Trying to explore the httpx since it's nativy async
 @app.get("/matches/{match_id}", response_model=DetailedMatchData)
 async def get_match(
-        match_id: int,
-        background_tasks: BackgroundTasks,
-        manager: MatchManager = Depends(get_match_manager),
+    match_id: int,
+    background_tasks: BackgroundTasks,
+    manager: MatchManager = Depends(get_match_manager),
 ):
     """
     Endpoint providing detailed match data.
@@ -563,9 +546,7 @@ async def get_match(
         ErrInternal: If an unexpected error occurs.
     """
 
-    res: Ok[DetailedMatchData] | ErrHttpxRequest | ErrInternal = (
-        await manager.get_match(match_id)
-    )
+    res: Ok[DetailedMatchData] | ErrHttpxRequest | ErrInternal = await manager.get_match(match_id)
     if isinstance(res, ErrHttpxRequest):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -617,12 +598,10 @@ async def get_stats(rating_id: str, types: str, stats_class=Depends(get_stats_cl
 
 @app.get("/stats/{hero_id}/")
 async def get_hero_stats(
-        rating_id: str,
-        types: str,
-        hero_id: str,
-        stats_class: dict[str, XPM | GPM | Raw | XP | Against | With | Item] = Depends(
-            get_stats_classes
-        ),
+    rating_id: str,
+    types: str,
+    hero_id: str,
+    stats_class: dict[str, XPM | GPM | Raw | XP | Against | With | Item] = Depends(get_stats_classes),
 ):
     """
     Endpoint providing hero stats.

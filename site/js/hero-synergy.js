@@ -5,8 +5,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Загружаем данные о героях и синергии
   Promise.all([
     fetch('constants/heroes.json').then(res => res.json()),
-    fetch(`http://localhost:5000/?rating_id=43&types=with&hero_id=${heroId}`).then(res => res.json()),
-    fetch(`http://localhost:5000/?rating_id=43&types=against&hero_id=${heroId}`).then(res => res.json())
+    fetch(`http://localhost:8080/?rating_id=43&types=with&hero_id=${heroId}`).then(res => res.json()),
+    fetch(`http://localhost:8080/?rating_id=43&types=against&hero_id=${heroId}`).then(res => res.json())
   ])
   .then(([heroesData, withData, againstData]) => {
     // Находим текущего героя
