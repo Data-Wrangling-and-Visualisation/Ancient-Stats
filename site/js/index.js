@@ -1,6 +1,6 @@
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
   // Загрузка данных героев
-  fetch('../site/constants/heroes.json')
+  fetch('constants/heroes.json')
     .then(response => response.json())
     .then(heroesData => {
       const heroes = Object.values(heroesData);

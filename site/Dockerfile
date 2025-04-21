@@ -4,9 +4,9 @@ WORKDIR /site
 
 COPY . /site
 
-RUN npm install serve
+RUN npm install -g http-server
 
 
 EXPOSE 5173
 
-CMD [ "npx", "serve", "-l", "5173", "."]
+CMD ["http-server", "-p", "5173", "."]

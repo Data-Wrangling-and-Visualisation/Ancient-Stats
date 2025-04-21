@@ -2,37 +2,40 @@ document.addEventListener('DOMContentLoaded', () => {
   const params = new URLSearchParams(window.location.search);
   const heroId = params.get('id');
 
+  console.log(heroId);
+
   // Загружаем данные о героях и синергии
   Promise.all([
     fetch('constants/heroes.json').then(res => res.json()),
-    fetch(`http://localhost:8080/?rating_id=43&types=with&hero_id=${heroId}`).then(res => res.json()),
-    fetch(`http://localhost:8080/?rating_id=43&types=against&hero_id=${heroId}`).then(res => res.json())
+    fetch(`http://localhost:8080/stats/${heroId}?rating_id=43&types=with`).then(res => res.json()),
+    fetch(`http://localhost:8080/stats/${heroId}?rating_id=43&types=against`).then(res => res.json())
   ])
-  .then(([heroesData, withData, againstData]) => {
-    // Находим текущего героя
-    const hero = Object.values(heroesData).find(h => h.id == heroId);
-    if (!hero) return;
+    .then(([heroesData, withData, againstData]) => {
+      // Находим текущего героя
+      const hero = Object.values(heroesData).find(h => h.id == heroId);
+      console.log(hero);
+      if (!hero) return;
 
-    // Обновляем информацию о герое
-    document.getElementById('hero-info-name').textContent = hero.localized_name;
-    document.getElementById('hero-info-img').src = `https://cdn.cloudflare.steamstatic.com${hero.img}`;
-    document.getElementById('hero-info-attribute').textContent = `Attribute: ${formatAttr(hero.primary_attr)}`;
-    document.getElementById('hero-info-roles').textContent = `Roles: ${hero.roles.join(', ')}`;
+      // Обновляем информацию о герое
+      document.getElementById('hero-info-name').textContent = hero.localized_name;
+      document.getElementById('hero-info-img').src = `https://cdn.cloudflare.steamstatic.com${hero.img}`;
+      document.getElementById('hero-info-attribute').textContent = `Attribute: ${formatAttr(hero.primary_attr)}`;
+      document.getElementById('hero-info-roles').textContent = `Roles: ${hero.roles.join(', ')}`;
 
-    // Формируем данные для таблицы
-    const synergyData = prepareSynergyData(heroesData, withData, againstData);
-    initTable(synergyData);
-  })
-  .catch(error => {
-    console.error('Error loading data:', error);
-    document.getElementById('synergy-data').innerHTML = `
+      // Формируем данные для таблицы
+      const synergyData = prepareSynergyData(heroesData, withData, againstData);
+      initTable(synergyData);
+    })
+    .catch(error => {
+      console.error('Error loading data:', error);
+      document.getElementById('synergy-data').innerHTML = `
       <tr>
         <td colspan="3" style="text-align: center; color: #ef4444;">
           Error loading data. Please try again later.
         </td>
       </tr>
     `;
-  });
+    });
 
   function formatAttr(attr) {
     switch (attr) {
