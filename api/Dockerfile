@@ -24,4 +24,4 @@ RUN uv pip install --no-cache-dir -e .
 
 COPY . /app/api
 
-EXPOSE 8000
+EXPOSE 8080
